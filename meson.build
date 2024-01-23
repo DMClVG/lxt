@@ -173,7 +173,9 @@ if not get_option('source-only')
         assert(not sdlmain_dep.found(), 'checking if fake dependency has been found')
     endif
 
-    lite_deps = [lua_dep, sdl_dep, sdlmain_dep, freetype_dep, pcre2_dep, libm, libdl]
+    guile_dep = dependency('guile-3.0')
+
+    lite_deps = [lua_dep, sdl_dep, sdlmain_dep, freetype_dep, pcre2_dep, guile_dep, libm, libdl]
 endif
 #===============================================================================
 # Install Configuration
@@ -219,15 +221,14 @@ endif
 
 install_data('licenses/licenses.md', install_dir : lite_docdir)
 
-install_subdir('docs/api' , install_dir : lite_datadir, strip_directory: true)
-install_subdir('data/core' , install_dir : lite_datadir, exclude_files : 'start.lua')
-foreach data_module : ['fonts', 'plugins', 'colors']
+install_subdir('data/core' , install_dir : lite_datadir, exclude_files : 'init.scm')
+foreach data_module : ['fonts']
     install_subdir(join_paths('data', data_module), install_dir : lite_datadir)
 endforeach
 
 configure_file(
-    input : 'data/core/start.lua',
-    output : 'start.lua',
+    input : 'data/core/init.scm',
+    output : 'init.scm',
     configuration : conf_data,
     install_dir : join_paths(lite_datadir, 'core'),
 )

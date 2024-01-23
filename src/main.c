@@ -4,6 +4,7 @@
 #include "api/api.h"
 #include "rencache.h"
 #include "renderer.h"
+#include <libguile.h>
 
 #include <signal.h>
 
@@ -16,7 +17,6 @@
 #elif defined(__FreeBSD__)
   #include <sys/sysctl.h>
 #endif
-
 
 static SDL_Window *window;
 
@@ -119,7 +119,7 @@ void set_macos_bundle_resources(lua_State *L);
   #define LITE_ARCH_TUPLE ARCH_PROCESSOR "-" ARCH_PLATFORM
 #endif
 
-int main(int argc, char **argv) {
+static void inner_main(void* closure, int argc, char **argv) {
 #ifndef _WIN32
   signal(SIGPIPE, SIG_IGN);
 #endif
@@ -175,35 +175,8 @@ int main(int argc, char **argv) {
   }
   window_renderer = ren_init(window);
 
-  lua_State *L;
-init_lua:
-  L = luaL_newstate();
-  luaL_openlibs(L);
-  api_load_libs(L);
-
-
-  lua_newtable(L);
-  for (int i = 0; i < argc; i++) {
-    lua_pushstring(L, argv[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-  lua_setglobal(L, "ARGS");
-
-  lua_pushstring(L, SDL_GetPlatform());
-  lua_setglobal(L, "PLATFORM");
-
-  lua_pushstring(L, LITE_ARCH_TUPLE);
-  lua_setglobal(L, "ARCH");
-
   char exename[2048];
   get_exe_filename(exename, sizeof(exename));
-  if (*exename) {
-    lua_pushstring(L, exename);
-  } else {
-    // get_exe_filename failed
-    lua_pushstring(L, argv[0]);
-  }
-  lua_setglobal(L, "EXEFILE");
 
 #ifdef __APPLE__
   enable_momentum_scroll();
@@ -214,58 +187,17 @@ init_lua:
   SDL_EventState(SDL_TEXTINPUT, SDL_ENABLE);
   SDL_EventState(SDL_TEXTEDITING, SDL_ENABLE);
 
-  const char *init_lite_code = \
-    "local core\n"
-    "local os_exit = os.exit\n"
-    "os.exit = function(code, close)\n"
-    "  os_exit(code, close == nil and true or close)\n"
-    "end\n"
-    "xpcall(function()\n"
-    "  local match = require('utf8extra').match\n"
-    "  HOME = os.getenv('" LITE_OS_HOME "')\n"
-    "  local exedir = match(EXEFILE, '^(.*)" LITE_PATHSEP_PATTERN LITE_NONPATHSEP_PATTERN "$')\n"
-    "  local prefix = os.getenv('LITE_PREFIX') or match(exedir, '^(.*)" LITE_PATHSEP_PATTERN "bin$')\n"
-    "  dofile((MACOS_RESOURCES or (prefix and prefix .. '/share/lite-xl' or exedir .. '/data')) .. '/core/start.lua')\n"
-    "  core = require(os.getenv('LITE_XL_RUNTIME') or 'core')\n"
-    "  core.init()\n"
-    "  core.run()\n"
-    "end, function(err)\n"
-    "  local error_path = 'error.txt'\n"
-    "  io.stdout:write('Error: '..tostring(err)..'\\n')\n"
-    "  io.stdout:write(debug.traceback(nil, 2)..'\\n')\n"
-    "  if core and core.on_error then\n"
-    "    error_path = USERDIR .. PATHSEP .. error_path\n"
-    "    pcall(core.on_error, err)\n"
-    "  else\n"
-    "    local fp = io.open(error_path, 'wb')\n"
-    "    fp:write('Error: ' .. tostring(err) .. '\\n')\n"
-    "    fp:write(debug.traceback(nil, 2)..'\\n')\n"
-    "    fp:close()\n"
-    "    error_path = system.absolute_path(error_path)\n"
-    "  end\n"
-    "  system.show_fatal_error('Lite XL internal error',\n"
-    "    'An internal error occurred in a critical part of the application.\\n\\n'..\n"
-    "    'Error: '..tostring(err)..'\\n\\n'..\n"
-    "    'Details can be found in \\\"'..error_path..'\\\"')\n"
-    "  os.exit(1)\n"
-    "end)\n"
-    "return core and core.restart_request\n";
+  api_load();
 
-  if (luaL_loadstring(L, init_lite_code)) {
-    fprintf(stderr, "internal error when starting the application\n");
-    exit(1);
-  }
-  lua_pcall(L, 0, 1, 0);
-  if (lua_toboolean(L, -1)) {
-    lua_close(L);
-    rencache_invalidate();
-    goto init_lua;
-  }
+  SCM file = scm_from_utf8_string("init.scm");
+  scm_primitive_load(file);
 
   // This allows the window to be destroyed before lite-xl is done with
   // reaping child processes
   ren_free(window_renderer);
-  lua_close(L);
+}
 
-  return EXIT_SUCCESS;
+int main(int argc, char **argv) {
+  scm_boot_guile(argc, argv, inner_main, 0);
+  return 0;
 }
