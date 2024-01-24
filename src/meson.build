@@ -1,6 +1,7 @@
 lite_sources = [
     'api/api.c',
     'api/renderer.c',
+    'api/system.c',
     'renderer.c',
     'renwindow.c',
     'rencache.c',
