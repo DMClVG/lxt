@@ -31,7 +31,7 @@
 #define CMD_BUF_INIT_SIZE (1024 * 512)
 #define COMMAND_BARE_SIZE offsetof(Command, command)
 
-enum CommandType { SET_CLIP, DRAW_TEXT, DRAW_RECT };
+enum CommandType { SET_CLIP, DRAW_TEXT, DRAW_RECT, DRAW_TEXT_BUFFER };
 
 typedef struct {
   enum CommandType type;
@@ -54,6 +54,16 @@ typedef struct {
   int8_t tab_size;
   char text[];
 } DrawTextCommand;
+
+
+typedef struct {
+  RenRect rect;
+  RenFont *fonts[FONT_FALLBACK_MAX];
+  float text_x;
+  size_t len;
+  int8_t tab_size;
+  char buffer[];
+} DrawTextBufferCommand;
 
 typedef struct {
   RenRect rect;
@@ -211,6 +221,31 @@ double rencache_draw_text(RenWindow *window_renderer, RenFont **fonts, const cha
 }
 
 
+double rencache_draw_buffer(RenWindow *window_renderer, RenFont **fonts, const uint32_t *text, char* red, char* green, char* blue, size_t len, double x, int y)
+{
+  int x_offset;
+  double width = ren_font_group_get_width_utf32(window_renderer, fonts, text, len, &x_offset);
+  RenRect rect = { x + x_offset, y, (int)(width - x_offset), ren_font_group_get_height(fonts) };
+  if (rects_overlap(last_clip_rect, rect)) {
+    int sz = len;
+    DrawTextBufferCommand *cmd = push_command(window_renderer, DRAW_TEXT_BUFFER, sizeof(DrawTextBufferCommand) + (sz * (sizeof(uint32_t) + 3)));
+    if (cmd) {
+      memcpy(&cmd->buffer[0], text, sz * sizeof(uint32_t));
+      memcpy(&cmd->buffer[sz * (sizeof(uint32_t) + 0)], red, sz);
+      memcpy(&cmd->buffer[sz * (sizeof(uint32_t) + 1)], green, sz);
+      memcpy(&cmd->buffer[sz * (sizeof(uint32_t) + 2)], blue, sz);
+
+      memcpy(cmd->fonts, fonts, sizeof(RenFont*)*FONT_FALLBACK_MAX);
+      cmd->rect = rect;
+      cmd->text_x = x;
+      cmd->len = len;
+      cmd->tab_size = ren_font_group_get_tab_size(fonts);
+    }
+  }
+  return x + width;
+}
+
+
 void rencache_invalidate(void) {
   memset(cells_prev, 0xff, sizeof(cells_buf1));
 }
@@ -310,6 +345,7 @@ void rencache_end_frame(RenWindow *window_renderer) {
       SetClipCommand *ccmd = (SetClipCommand*)&cmd->command;
       DrawRectCommand *rcmd = (DrawRectCommand*)&cmd->command;
       DrawTextCommand *tcmd = (DrawTextCommand*)&cmd->command;
+      DrawTextBufferCommand *tbcmd = (DrawTextBufferCommand*)&cmd->command;
       switch (cmd->type) {
         case SET_CLIP:
           ren_set_clip_rect(window_renderer, intersect_rects(ccmd->rect, r));
@@ -320,6 +356,20 @@ void rencache_end_frame(RenWindow *window_renderer) {
         case DRAW_TEXT:
           ren_font_group_set_tab_size(tcmd->fonts, tcmd->tab_size);
           ren_draw_text(&rs, tcmd->fonts, tcmd->text, tcmd->len, tcmd->text_x, tcmd->rect.y, tcmd->color);
+          break;
+        case DRAW_TEXT_BUFFER:
+          ren_font_group_set_tab_size(tbcmd->fonts, tbcmd->tab_size);
+          ren_draw_buffer(
+              &rs,
+              tbcmd->fonts,
+              &tbcmd->buffer[0], // text
+              &tbcmd->buffer[(sizeof(uint32_t) + 0) * tbcmd->len], // red
+              &tbcmd->buffer[(sizeof(uint32_t) + 1) * tbcmd->len], // green
+              &tbcmd->buffer[(sizeof(uint32_t) + 2) * tbcmd->len], // blue
+              tbcmd->len,
+              tbcmd->text_x,
+              tbcmd->rect.y);
+
           break;
       }
     }

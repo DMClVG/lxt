@@ -68,6 +68,47 @@ static SCM f_draw_text(SCM t_font, SCM t_text, SCM t_x, SCM t_y, SCM t_color) {
   return scm_from_double(0);
 }
 
+static int strlen_utf32(const uint32_t *str, int max)
+{
+  int len = 0;
+  while(str[len])
+  {
+    if (len + 1 >= max)
+      break;
+    len++;
+  }
+  return len;
+}
+
+static SCM f_draw_buffer(SCM t_font, SCM t_buffer, SCM t_red, SCM t_green, SCM t_blue, SCM t_w, SCM t_h, SCM t_x, SCM t_y) {
+  RenFont* fonts[FONT_FALLBACK_MAX];
+  font_retrieve(fonts, t_font);
+  int font_height = ren_font_group_get_height(fonts);
+
+  uint32_t *text = (uint32_t*) SCM_BYTEVECTOR_CONTENTS(t_buffer);
+  char *red = (char*) SCM_BYTEVECTOR_CONTENTS(t_red);
+  char *green = (char*) SCM_BYTEVECTOR_CONTENTS(t_green);
+  char *blue = (char*) SCM_BYTEVECTOR_CONTENTS(t_blue);
+
+  double x = scm_to_double(t_x);
+  int y = scm_to_int(t_y);
+  int w = scm_to_int(t_w);
+  int h = scm_to_int(t_h);
+
+  for(int j = 0; j < h; j++)
+  {
+    uint32_t *row = &text[j * w];
+    char *row_red = &red[j * w];
+    char *row_green = &green[j * w];
+    char *row_blue = &blue[j * w];
+
+//    size_t len = strlen_utf32(row, w);
+    size_t len = (size_t) w;
+    rencache_draw_buffer(window_renderer, fonts, row, row_red, row_green, row_blue, len, x, y + j * font_height);
+  }
+  return scm_from_double(0);
+}
+
 static SCM f_end_frame() {
   rencache_end_frame(window_renderer);
   // clear the font reference table
@@ -90,6 +131,7 @@ void api_load_renderer() {
 
   scm_c_define_gsubr("load-font", 2, 0, 0, f_font_load);
   scm_c_define_gsubr("draw-text", 5, 0, 0, f_draw_text);
+  scm_c_define_gsubr("draw-buffer", 9, 0, 0, f_draw_buffer);
   scm_c_define_gsubr("draw-rect", 5, 0, 0, f_draw_rect);
   scm_c_define_gsubr("end-frame", 0, 0, 0, f_end_frame);
   scm_c_define_gsubr("begin-frame", 0, 0, 0, f_begin_frame);

@@ -79,6 +79,12 @@ static const char* utf8_to_codepoint(const char *p, unsigned *dst) {
   return (const char*)up + 1;
 }
 
+
+static const uint32_t* utf32_to_codepoint(const uint32_t *p, unsigned *dst) {
+  *dst = *p;
+  return p + 1;
+}
+
 static int font_set_load_options(RenFont* font) {
   int load_target = font->antialiasing == FONT_ANTIALIASING_NONE ? FT_LOAD_TARGET_MONO
     : (font->hinting == FONT_HINTING_SLIGHT ? FT_LOAD_TARGET_LIGHT : FT_LOAD_TARGET_NORMAL);
@@ -236,7 +242,7 @@ static void font_file_close(FT_Stream stream) {
 RenFont* ren_font_load(RenWindow *window_renderer, const char* path, float size, ERenFontAntialiasing antialiasing, ERenFontHinting hinting, unsigned char style) {
   RenFont *font = NULL;
   FT_Face face = NULL;
-  
+
   SDL_RWops *file = SDL_RWFromFile(path, "rb");
   if (!file)
     goto rwops_failure;
@@ -372,6 +378,32 @@ double ren_font_group_get_width(RenWindow *window_renderer, RenFont **fonts, con
   return width / surface_scale;
 }
 
+
+double ren_font_group_get_width_utf32(RenWindow *window_renderer, RenFont **fonts, const uint32_t *text, size_t len, int *x_offset) {
+  double width = 0;
+  const uint32_t* end = text + len;
+  GlyphMetric* metric = NULL; GlyphSet* set = NULL;
+  bool set_x_offset = x_offset == NULL;
+  while (text < end) {
+    unsigned int codepoint;
+    text = utf32_to_codepoint(text, &codepoint);
+    RenFont* font = font_group_get_glyph(&set, &metric, fonts, codepoint, 0);
+    if (!metric)
+      break;
+    width += (!font || metric->xadvance) ? metric->xadvance : fonts[0]->space_advance;
+    if (!set_x_offset) {
+      set_x_offset = true;
+      *x_offset = metric->bitmap_left; // TODO: should this be scaled by the surface scale?
+    }
+  }
+  const int surface_scale = renwin_get_surface(window_renderer).scale;
+  if (!set_x_offset) {
+    *x_offset = 0;
+  }
+  return width / surface_scale;
+}
+
+
 double ren_draw_text(RenSurface *rs, RenFont **fonts, const char *text, size_t len, float x, int y, RenColor color) {
   SDL_Surface *surface = rs->surface;
   SDL_Rect clip;
@@ -393,6 +425,105 @@ double ren_draw_text(RenSurface *rs, RenFont **fonts, const char *text, size_t l
   while (text < end) {
     unsigned int codepoint, r, g, b;
     text = utf8_to_codepoint(text, &codepoint);
+    GlyphSet* set = NULL; GlyphMetric* metric = NULL;
+    RenFont* font = font_group_get_glyph(&set, &metric, fonts, codepoint, (int)(fmod(pen_x, 1.0) * SUBPIXEL_BITMAPS_CACHED));
+    if (!metric)
+      break;
+    int start_x = floor(pen_x) + metric->bitmap_left;
+    int end_x = (metric->x1 - metric->x0) + start_x;
+    int glyph_end = metric->x1, glyph_start = metric->x0;
+    if (!metric->loaded && codepoint > 0xFF)
+      ren_draw_rect(rs, (RenRect){ start_x + 1, y, font->space_advance - 1, ren_font_group_get_height(fonts) }, color);
+    if (set->surface && color.a > 0 && end_x >= clip.x && start_x < clip_end_x) {
+      uint8_t* source_pixels = set->surface->pixels;
+      for (int line = metric->y0; line < metric->y1; ++line) {
+        int target_y = line + y - metric->bitmap_top + fonts[0]->baseline * surface_scale;
+        if (target_y < clip.y)
+          continue;
+        if (target_y >= clip_end_y)
+          break;
+        if (start_x + (glyph_end - glyph_start) >= clip_end_x)
+          glyph_end = glyph_start + (clip_end_x - start_x);
+        if (start_x < clip.x) {
+          int offset = clip.x - start_x;
+          start_x += offset;
+          glyph_start += offset;
+        }
+        uint32_t* destination_pixel = (uint32_t*)&(destination_pixels[surface->pitch * target_y + start_x * bytes_per_pixel]);
+        uint8_t* source_pixel = &source_pixels[line * set->surface->pitch + glyph_start * (font->antialiasing == FONT_ANTIALIASING_SUBPIXEL ? 3 : 1)];
+        for (int x = glyph_start; x < glyph_end; ++x) {
+          uint32_t destination_color = *destination_pixel;
+          // the standard way of doing this would be SDL_GetRGBA, but that introduces a performance regression. needs to be investigated
+          SDL_Color dst = { (destination_color & surface->format->Rmask) >> surface->format->Rshift, (destination_color & surface->format->Gmask) >> surface->format->Gshift, (destination_color & surface->format->Bmask) >> surface->format->Bshift, (destination_color & surface->format->Amask) >> surface->format->Ashift };
+          SDL_Color src;
+
+          if (font->antialiasing == FONT_ANTIALIASING_SUBPIXEL) {
+            src.r = *(source_pixel++);
+            src.g = *(source_pixel++);
+          }
+          else  {
+            src.r = *(source_pixel);
+            src.g = *(source_pixel);
+          }
+
+          src.b = *(source_pixel++);
+          src.a = 0xFF;
+
+          r = (color.r * src.r * color.a + dst.r * (65025 - src.r * color.a) + 32767) / 65025;
+          g = (color.g * src.g * color.a + dst.g * (65025 - src.g * color.a) + 32767) / 65025;
+          b = (color.b * src.b * color.a + dst.b * (65025 - src.b * color.a) + 32767) / 65025;
+          // the standard way of doing this would be SDL_GetRGBA, but that introduces a performance regression. needs to be investigated
+          *destination_pixel++ = dst.a << surface->format->Ashift | r << surface->format->Rshift | g << surface->format->Gshift | b << surface->format->Bshift;
+        }
+      }
+    }
+
+    float adv = metric->xadvance ? metric->xadvance : font->space_advance;
+
+    if(!last) last = font;
+    else if(font != last || text == end) {
+      double local_pen_x = text == end ? pen_x + adv : pen_x;
+      if (underline)
+        ren_draw_rect(rs, (RenRect){last_pen_x, y / surface_scale + last->height - 1, (local_pen_x - last_pen_x) / surface_scale, last->underline_thickness * surface_scale}, color);
+      if (strikethrough)
+        ren_draw_rect(rs, (RenRect){last_pen_x, y / surface_scale + last->height / 2, (local_pen_x - last_pen_x) / surface_scale, last->underline_thickness * surface_scale}, color);
+      last = font;
+      last_pen_x = pen_x;
+    }
+
+    pen_x += adv;
+  }
+  return pen_x / surface_scale;
+}
+
+
+double ren_draw_buffer(RenSurface *rs, RenFont **fonts, const uint32_t *text, const char* red, const char* green, const char* blue, size_t len, float x, int y) {
+  SDL_Surface *surface = rs->surface;
+  SDL_Rect clip;
+  SDL_GetClipRect(surface, &clip);
+
+  const int surface_scale = rs->scale;
+  double pen_x = x * surface_scale;
+  y *= surface_scale;
+  int bytes_per_pixel = surface->format->BytesPerPixel;
+  const uint32_t* end = text + len;
+  uint8_t* destination_pixels = surface->pixels;
+  int clip_end_x = clip.x + clip.w, clip_end_y = clip.y + clip.h;
+
+  RenFont* last = NULL;
+  double last_pen_x = x;
+  bool underline = fonts[0]->style & FONT_STYLE_UNDERLINE;
+  bool strikethrough = fonts[0]->style & FONT_STYLE_STRIKETHROUGH;
+
+  while (text < end) {
+    unsigned int codepoint, r, g, b;
+    text = utf32_to_codepoint(text, &codepoint);
+    RenColor color;
+    color.r = *(red++);
+    color.g = *(green++);
+    color.b = *(blue++);
+    color.a = 255;
+
     GlyphSet* set = NULL; GlyphMetric* metric = NULL;
     RenFont* font = font_group_get_glyph(&set, &metric, fonts, codepoint, (int)(fmod(pen_x, 1.0) * SUBPIXEL_BITMAPS_CACHED));
     if (!metric)

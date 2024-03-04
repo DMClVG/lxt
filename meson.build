@@ -233,6 +233,14 @@ configure_file(
     install_dir : join_paths(lite_datadir, 'core'),
 )
 
+
+configure_file(
+    input : 'data/core/buffer.scm',
+    output : 'buffer.scm',
+    configuration : conf_data,
+    install_dir : join_paths(lite_datadir, 'core'),
+)
+
 if not get_option('source-only')
     subdir('src')
     subdir('scripts')
