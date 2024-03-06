@@ -29,6 +29,7 @@
 (define example-code
   (map-quote-to-sexpr
     '(if (equal? "banana" "apple")
+       '()
        (display "banana is apple")
        (display "banana is not apple"))))
 
@@ -36,25 +37,43 @@
 
 (sexpr-buffer/write *current-buffer* *screen*)
 
-(define (process-key-press key)
+(define *shift* #f)
+
+(define (process-key-pressed key)
   (cond
-    ((equal? key "n")
+    ((string-contains key "shift")
+     (set! *shift* #t))
+
+    ((equal? key "x")
+     (sexpr-buffer/delete! *current-buffer*)
+     (screen/clear! *screen*)
+     (sexpr-buffer/write *current-buffer* *screen*))
+
+    ((equal? key "space")
+     (sexpr-buffer/toggle-split! *current-buffer*)
+     (screen/clear! *screen*)
+     (sexpr-buffer/write *current-buffer* *screen*))
+
+    ((and  (equal? key "j"))
      (sexpr-buffer/next! *current-buffer*)
      (sexpr-buffer/write *current-buffer* *screen*))
 
-    ((equal? key "b")
+    ((and (equal? key "k"))
      (sexpr-buffer/prev! *current-buffer*)
      (sexpr-buffer/write *current-buffer* *screen*))
 
-    ((equal? key "d")
+    ((equal? key "l")
      (sexpr-buffer/down! *current-buffer*)
      (sexpr-buffer/write *current-buffer* *screen*))
 
-    ((equal? key "u")
+    ((equal? key "h")
      (sexpr-buffer/up! *current-buffer*)
      (sexpr-buffer/write *current-buffer* *screen*))))
 
-
+(define (process-key-released key)
+  (cond
+    ((string-contains key "shift")
+     (set! *shift* #f))))
 
 (define (trace x)
   (write x)
@@ -68,13 +87,18 @@
 
     ('key-pressed
      (let ((key (assoc-ref event 'key)))
-       (process-key-press key)))
+       (process-key-pressed key)))
+
+    ('key-released
+     (let ((key (assoc-ref event 'key)))
+       (process-key-released key)))
+
     (else => trace))
 
 
 
-;;  (display event)
-;;  (newline)
+  (display event)
+  (newline)
   '())
 
 

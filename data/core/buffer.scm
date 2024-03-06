@@ -14,7 +14,7 @@
      screen/green
      screen/blue
      screen/character
-     screen/set-character!
+     screen/clear!
      screen/write-string!
      screen/write-sexpr!
      sexpr
@@ -26,6 +26,8 @@
      sexpr-buffer/prev!
      sexpr-buffer/down!
      sexpr-buffer/up!
+     sexpr-buffer/delete!
+     sexpr-buffer/toggle-split!
      p/mk
      p/x
      p/y))
@@ -46,6 +48,9 @@
   (red screen/red)
   (green screen/green)
   (blue screen/blue))
+
+(define (screen/clear! screen)
+  (bytevector-fill! (screen/buffer screen) 0))
 
 (define (screen/new width height)
   (let ((buffer (make-bytevector (* width height 4) 0))
@@ -108,9 +113,6 @@
          (y (p/y p)))
 
      (when (and (>= y 0) (< y height) (< x width))
-
-         (display s)
-         (newline)
          (if inverted?
            (for-each
              (lambda (i)
@@ -119,9 +121,6 @@
                  (* i 4)
                  (+ (bytevector-u32-native-ref s (* i 4)) #x80000000)))
              (iota (floor/ (bytevector-length s) 4))))
-
-         (display s)
-         (newline)
 
          ;; write UTF-32 characters
          (bytevector-copy!
@@ -168,6 +167,13 @@
 
 (define (p/mk x y)
   (list x y))
+
+(define (p/x! x p)
+  (p/mk x (p/y p)))
+
+
+(define (p/y! y p)
+  (p/mk (p/x p) y))
 
 (define (p/x point) (first point))
 (define (p/y point) (second point))
@@ -232,6 +238,9 @@
           ((number? datum)
            (let ((str (number->string datum)))
              (screen/write-string! screen str color-number selected? point)))
+
+          ((null? datum)
+           (screen/write-string! screen "()" color-white selected? point))
 
           (else (error "bad")))))
 
@@ -302,8 +311,10 @@
          (up (cursor/up cursor))
          (next (second-or-null (find-tail (lambda (sexpr) (eq? sexpr current)) (sexpr/datum up)))))
 
-        (unless (null? next)
-          (sexpr-buffer/cursor! buf (cursor/mk (cons next (cdr (cursor/path cursor)))))))))
+        (if (not (null? next))
+          (sexpr-buffer/cursor! buf (cursor/mk (cons next (cdr (cursor/path cursor)))))
+          (begin
+            (sexpr-buffer/up! buf))))))
 
 
 (define (sexpr-buffer/prev! buf)
@@ -317,10 +328,37 @@
                    (lambda (sexpr) (not (eq? sexpr current)))
                    (sexpr/datum up)))))
 
-        (unless (null? prev)
-          (sexpr-buffer/cursor! buf (cursor/mk (cons prev (cdr (cursor/path cursor)))))))))
+        (if (not (null? prev))
+          (sexpr-buffer/cursor! buf (cursor/mk (cons prev (cdr (cursor/path cursor)))))
+          (sexpr-buffer/up! buf)))))
+
+(define (sexpr-buffer/delete! buf)
+  (when (cursor/has-up? (sexpr-buffer/cursor buf))
+    (let ((to-be-deleted (cursor/current (sexpr-buffer/cursor buf))))
+      (sexpr-buffer/up! buf)
+      (let ((current (cursor/current (sexpr-buffer/cursor buf))))
+         (sexpr/datum!
+           current
+           (filter
+             (lambda (x)
+               (not (eq? x to-be-deleted)))
+             (sexpr/datum current)))))))
 
 
+(define (sexpr/traverse sexpr f)
+  (f sexpr)
+  (when (sexpr/list? sexpr)
+    (for-each
+       (lambda (x) (sexpr/traverse x f))
+       (sexpr/datum sexpr))))
+
+(define (sexpr/split-off! sexpr) (sexpr/split! sexpr #f))
+
+(define (sexpr-buffer/toggle-split! buf)
+  (let ((current (cursor/current (sexpr-buffer/cursor buf))))
+    (if (sexpr/split? current)
+       (sexpr/traverse current sexpr/split-off!) ; toggle off
+       (sexpr/split! current #t)))) ; toggle on
 
 (define (sexpr-buffer/write buf screen)
   (screen/write-sexpr!
