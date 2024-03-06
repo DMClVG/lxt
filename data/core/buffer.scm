@@ -161,9 +161,9 @@
 
 (define color-paren '(100 100 100))
 (define color-string '(#xb8 #xbb #x26))
-(define color-symbol '(#xfb #xf1 #xc7))
+(define color-white '(#xfb #xf1 #xc7))
 (define color-number '(#xfe #x80 #x19))
-(define color-white '(#xff #xff #xff))
+;;(define color-white '(#xff #xff #xff))
 
 (define (p/mk x y)
   (list x y))
@@ -228,7 +228,7 @@
              (screen/write-string! screen "(" (if selected? color-white color-paren) selected? point))))
 
           ((symbol? datum)
-           (screen/write-string! screen (symbol->string datum) color-symbol selected? point))
+           (screen/write-string! screen (symbol->string datum) color-white selected? point))
 
           ((string? datum)
            (screen/write-string! screen "\"" color-string selected?
@@ -252,7 +252,7 @@
 (define (cursor/current cursor)
   (first (cursor/path cursor)))
 
-(define (cursor/up cursor)
+(define (cursor/get-up cursor)
   (second (cursor/path cursor)))
 
 (define (cursor/has-up? cursor)
@@ -270,11 +270,6 @@
 (define (sexpr-buffer/mk toplevel)
   (sexpr-buffer/mk-raw (cursor/mk (list toplevel)) toplevel))
 
-(define (sexpr-buffer/up buf)
-  (sexpr-buffer/cursor!
-    buf
-    (cursor/up (sexpr-buffer/cursor buf))))
-
 (define (second-or-null x)
   (if (< (length x) 2)
     '()
@@ -285,64 +280,99 @@
     '()
     (last x)))
 
-(define (sexpr-buffer/down! buf)
-  (let*
-    ((cursor (sexpr-buffer/cursor buf))
-     (current (cursor/current cursor))
-     (path (cursor/path cursor))
-     (datum (sexpr/datum current)))
-    (when (and (not (cursor/leaf? cursor)) (not (null? datum)))
-      (sexpr-buffer/cursor! buf (cursor/mk (cons (first datum) path))))))
 
-
-(define (sexpr-buffer/up! buf)
-  (let*
-    ((cursor (sexpr-buffer/cursor buf))
-     (path (cursor/path cursor)))
-    (when (cursor/has-up? cursor)
-      (sexpr-buffer/cursor! buf (cursor/mk (cdr path))))))
-
-
-(define (sexpr-buffer/next! buf)
-  (if (cursor/has-up? (sexpr-buffer/cursor buf))
+(define (cursor/next cursor)
+  (if (cursor/has-up? cursor)
     (let*
-        ((cursor (sexpr-buffer/cursor buf))
-         (current (cursor/current cursor))
-         (up (cursor/up cursor))
+        ((current (cursor/current cursor))
+         (up (cursor/get-up cursor))
          (next (second-or-null (find-tail (lambda (sexpr) (eq? sexpr current)) (sexpr/datum up)))))
 
         (if (not (null? next))
-          (sexpr-buffer/cursor! buf (cursor/mk (cons next (cdr (cursor/path cursor)))))
-          (begin
-            (sexpr-buffer/up! buf))))))
+          (cursor/mk (cons next (cdr (cursor/path cursor))))
+          (cursor/next (cursor/up cursor))))
+    cursor))
 
-
-(define (sexpr-buffer/prev! buf)
-  (if (cursor/has-up? (sexpr-buffer/cursor buf))
+(define (cursor/skip cursor)
+  ;; move away from current sexpr no matter what (prefers siblings and next over previous)
+  ;; returns #f if can't move away
+  (if (cursor/has-up? cursor)
     (let*
-        ((cursor (sexpr-buffer/cursor buf))
-         (current (cursor/current cursor))
-         (up (cursor/up cursor))
+        ((current (cursor/current cursor))
+         (up (cursor/get-up cursor))
+         (next (second-or-null (find-tail (lambda (sexpr) (eq? sexpr current)) (sexpr/datum up))))
+         (prev (last-or-null
+                 (take-while
+                   (lambda (sexpr) (not (eq? sexpr current)))
+                   (sexpr/datum up)))))
+
+        (cond
+          ((not (null? next))
+           (cursor/mk (cons next (cdr (cursor/path cursor)))))
+          ((not (null? prev))
+           (cursor/mk (cons prev (cdr (cursor/path cursor)))))
+          (else
+           (cursor/up cursor))))
+
+    #f))
+
+
+(define (cursor/prev cursor)
+  (if (cursor/has-up? cursor)
+    (let*
+        ((current (cursor/current cursor))
+         (up (cursor/get-up cursor))
          (prev (last-or-null
                  (take-while
                    (lambda (sexpr) (not (eq? sexpr current)))
                    (sexpr/datum up)))))
 
         (if (not (null? prev))
-          (sexpr-buffer/cursor! buf (cursor/mk (cons prev (cdr (cursor/path cursor)))))
-          (sexpr-buffer/up! buf)))))
+          (cursor/mk (cons prev (cdr (cursor/path cursor))))
+          (cursor/prev (cursor/up cursor))))
+    cursor))
+
+(define (cursor/down cursor)
+  (let*
+    ((current (cursor/current cursor))
+     (path (cursor/path cursor))
+     (datum (sexpr/datum current)))
+    (if (and (not (cursor/leaf? cursor)) (not (null? datum)))
+      (cursor/mk (cons (first datum) path))
+      cursor)))
+
+(define (cursor/up cursor)
+  (let* ((path (cursor/path cursor)))
+    (if (cursor/has-up? cursor)
+      (cursor/mk (cdr path))
+      cursor)))
+
+(define (sexpr-buffer/up! buf)
+  (sexpr-buffer/cursor! buf (cursor/up (sexpr-buffer/cursor buf))))
+
+(define (sexpr-buffer/down! buf)
+  (sexpr-buffer/cursor! buf (cursor/down (sexpr-buffer/cursor buf))))
+
+(define (sexpr-buffer/next! buf)
+  (sexpr-buffer/cursor! buf (cursor/next (sexpr-buffer/cursor buf))))
+
+(define (sexpr-buffer/prev! buf)
+  (sexpr-buffer/cursor! buf (cursor/prev (sexpr-buffer/cursor buf))))
 
 (define (sexpr-buffer/delete! buf)
   (when (cursor/has-up? (sexpr-buffer/cursor buf))
-    (let ((to-be-deleted (cursor/current (sexpr-buffer/cursor buf))))
-      (sexpr-buffer/up! buf)
-      (let ((current (cursor/current (sexpr-buffer/cursor buf))))
-         (sexpr/datum!
-           current
-           (filter
-             (lambda (x)
-               (not (eq? x to-be-deleted)))
-             (sexpr/datum current)))))))
+    (let* ((cursor (sexpr-buffer/cursor buf))
+           (to-be-deleted (cursor/current cursor))
+           (up (cursor/get-up cursor)))
+
+      (sexpr-buffer/cursor! buf (cursor/skip cursor))
+
+      (sexpr/datum!
+        up
+        (filter
+          (lambda (x)
+            (not (eq? x to-be-deleted)))
+          (sexpr/datum up))))))
 
 
 (define (sexpr/traverse sexpr f)

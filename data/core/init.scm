@@ -30,7 +30,7 @@
   (map-quote-to-sexpr
     '(if (equal? "banana" "apple")
        '()
-       (display "banana is apple")
+       ((display "banana is apple"))
        (display "banana is not apple"))))
 
 (define *current-buffer* (sexpr-buffer/mk example-code))
@@ -44,7 +44,7 @@
     ((string-contains key "shift")
      (set! *shift* #t))
 
-    ((equal? key "x")
+    ((equal? key "d")
      (sexpr-buffer/delete! *current-buffer*)
      (screen/clear! *screen*)
      (sexpr-buffer/write *current-buffer* *screen*))
