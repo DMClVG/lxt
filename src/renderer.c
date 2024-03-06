@@ -497,7 +497,7 @@ double ren_draw_text(RenSurface *rs, RenFont **fonts, const char *text, size_t l
 }
 
 
-double ren_draw_buffer(RenSurface *rs, RenFont **fonts, const uint32_t *text, const char* red, const char* green, const char* blue, size_t len, float x, int y) {
+double ren_draw_buffer(RenSurface *rs, RenFont **fonts, const uint32_t *text, const char* red, const char* green, const char* blue, size_t len, float x, int y, RenColor background_color) {
   SDL_Surface *surface = rs->surface;
   SDL_Rect clip;
   SDL_GetClipRect(surface, &clip);
@@ -517,12 +517,23 @@ double ren_draw_buffer(RenSurface *rs, RenFont **fonts, const uint32_t *text, co
 
   while (text < end) {
     unsigned int codepoint, r, g, b;
+    bool inverted = false;
+
     text = utf32_to_codepoint(text, &codepoint);
+
     RenColor color;
     color.r = *(red++);
     color.g = *(green++);
     color.b = *(blue++);
     color.a = 255;
+    RenColor original_color = color;
+
+    if(codepoint & (0x1 << 31)) // check inverted
+    {
+      inverted = true;
+      codepoint = codepoint ^ (0x1 << 31);
+      color = background_color;
+    }
 
     GlyphSet* set = NULL; GlyphMetric* metric = NULL;
     RenFont* font = font_group_get_glyph(&set, &metric, fonts, codepoint, (int)(fmod(pen_x, 1.0) * SUBPIXEL_BITMAPS_CACHED));
@@ -531,10 +542,18 @@ double ren_draw_buffer(RenSurface *rs, RenFont **fonts, const uint32_t *text, co
     int start_x = floor(pen_x) + metric->bitmap_left;
     int end_x = (metric->x1 - metric->x0) + start_x;
     int glyph_end = metric->x1, glyph_start = metric->x0;
-    if (!metric->loaded && codepoint > 0xFF)
+
+    if (!metric->loaded && codepoint > 0xFF) // if not ANSI
       ren_draw_rect(rs, (RenRect){ start_x + 1, y, font->space_advance - 1, ren_font_group_get_height(fonts) }, color);
+
+    float adv = metric->xadvance ? metric->xadvance : font->space_advance;
+    if(inverted) {
+      ren_draw_rect(rs, (RenRect){pen_x, y / surface_scale, adv+1, font->height }, original_color);
+    }
+
     if (set->surface && color.a > 0 && end_x >= clip.x && start_x < clip_end_x) {
       uint8_t* source_pixels = set->surface->pixels;
+
       for (int line = metric->y0; line < metric->y1; ++line) {
         int target_y = line + y - metric->bitmap_top + fonts[0]->baseline * surface_scale;
         if (target_y < clip.y)
@@ -568,16 +587,17 @@ double ren_draw_buffer(RenSurface *rs, RenFont **fonts, const uint32_t *text, co
           src.b = *(source_pixel++);
           src.a = 0xFF;
 
+
           r = (color.r * src.r * color.a + dst.r * (65025 - src.r * color.a) + 32767) / 65025;
           g = (color.g * src.g * color.a + dst.g * (65025 - src.g * color.a) + 32767) / 65025;
           b = (color.b * src.b * color.a + dst.b * (65025 - src.b * color.a) + 32767) / 65025;
+
           // the standard way of doing this would be SDL_GetRGBA, but that introduces a performance regression. needs to be investigated
           *destination_pixel++ = dst.a << surface->format->Ashift | r << surface->format->Rshift | g << surface->format->Gshift | b << surface->format->Bshift;
         }
       }
     }
 
-    float adv = metric->xadvance ? metric->xadvance : font->space_advance;
 
     if(!last) last = font;
     else if(font != last || text == end) {

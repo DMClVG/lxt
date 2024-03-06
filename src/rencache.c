@@ -62,6 +62,7 @@ typedef struct {
   float text_x;
   size_t len;
   int8_t tab_size;
+  RenColor background_color;
   char buffer[];
 } DrawTextBufferCommand;
 
@@ -221,7 +222,7 @@ double rencache_draw_text(RenWindow *window_renderer, RenFont **fonts, const cha
 }
 
 
-double rencache_draw_buffer(RenWindow *window_renderer, RenFont **fonts, const uint32_t *text, char* red, char* green, char* blue, size_t len, double x, int y)
+double rencache_draw_buffer(RenWindow *window_renderer, RenFont **fonts, const uint32_t *text, char* red, char* green, char* blue, size_t len, double x, int y, RenColor background_color)
 {
   int x_offset;
   double width = ren_font_group_get_width_utf32(window_renderer, fonts, text, len, &x_offset);
@@ -240,6 +241,7 @@ double rencache_draw_buffer(RenWindow *window_renderer, RenFont **fonts, const u
       cmd->text_x = x;
       cmd->len = len;
       cmd->tab_size = ren_font_group_get_tab_size(fonts);
+      cmd->background_color = background_color;
     }
   }
   return x + width;
@@ -368,8 +370,8 @@ void rencache_end_frame(RenWindow *window_renderer) {
               &tbcmd->buffer[(sizeof(uint32_t) + 2) * tbcmd->len], // blue
               tbcmd->len,
               tbcmd->text_x,
-              tbcmd->rect.y);
-
+              tbcmd->rect.y,
+              tbcmd->background_color);
           break;
       }
     }

@@ -80,7 +80,7 @@ static int strlen_utf32(const uint32_t *str, int max)
   return len;
 }
 
-static SCM f_draw_buffer(SCM t_font, SCM t_buffer, SCM t_red, SCM t_green, SCM t_blue, SCM t_w, SCM t_h, SCM t_x, SCM t_y) {
+static SCM f_draw_buffer(SCM t_font, SCM t_buffer, SCM t_red, SCM t_green, SCM t_blue, SCM t_w, SCM t_h, SCM t_x, SCM t_y, SCM t_background_color) {
   RenFont* fonts[FONT_FALLBACK_MAX];
   font_retrieve(fonts, t_font);
   int font_height = ren_font_group_get_height(fonts);
@@ -95,6 +95,8 @@ static SCM f_draw_buffer(SCM t_font, SCM t_buffer, SCM t_red, SCM t_green, SCM t
   int w = scm_to_int(t_w);
   int h = scm_to_int(t_h);
 
+  RenColor background_color = to_color(t_background_color);
+
   for(int j = 0; j < h; j++)
   {
     uint32_t *row = &text[j * w];
@@ -104,7 +106,7 @@ static SCM f_draw_buffer(SCM t_font, SCM t_buffer, SCM t_red, SCM t_green, SCM t
 
 //    size_t len = strlen_utf32(row, w);
     size_t len = (size_t) w;
-    rencache_draw_buffer(window_renderer, fonts, row, row_red, row_green, row_blue, len, x, y + j * font_height);
+    rencache_draw_buffer(window_renderer, fonts, row, row_red, row_green, row_blue, len, x, y + j * font_height, background_color);
   }
   return scm_from_double(0);
 }
@@ -131,7 +133,7 @@ void api_load_renderer() {
 
   scm_c_define_gsubr("load-font", 2, 0, 0, f_font_load);
   scm_c_define_gsubr("draw-text", 5, 0, 0, f_draw_text);
-  scm_c_define_gsubr("draw-buffer", 9, 0, 0, f_draw_buffer);
+  scm_c_define_gsubr("draw-buffer", 10, 0, 0, f_draw_buffer);
   scm_c_define_gsubr("draw-rect", 5, 0, 0, f_draw_rect);
   scm_c_define_gsubr("end-frame", 0, 0, 0, f_end_frame);
   scm_c_define_gsubr("begin-frame", 0, 0, 0, f_begin_frame);

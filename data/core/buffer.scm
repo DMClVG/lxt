@@ -99,7 +99,7 @@
 (define (color/green color) (second color))
 (define (color/blue color) (third color))
 
-(define (screen/write-string! screen s color p)
+(define (screen/write-string! screen s color inverted? p)
   (let* ((width (screen/width screen))
          (height (screen/height screen))
          (slen (string-length s))
@@ -108,6 +108,21 @@
          (y (p/y p)))
 
      (when (and (>= y 0) (< y height) (< x width))
+
+         (display s)
+         (newline)
+         (if inverted?
+           (for-each
+             (lambda (i)
+               (bytevector-u32-native-set!
+                 s
+                 (* i 4)
+                 (+ (bytevector-u32-native-ref s (* i 4)) #x80000000)))
+             (iota (floor/ (bytevector-length s) 4))))
+
+         (display s)
+         (newline)
+
          ;; write UTF-32 characters
          (bytevector-copy!
            s
@@ -174,7 +189,7 @@
          (cdr ls)
          #f
          (screen/write-sexpr! screen cursor (car ls)
-           (let ((point (if (or first? split?) point (screen/write-string! screen " " color-white point))))
+           (let ((point (if (or first? split?) point (screen/write-string! screen " " color-white #f point))))
 
               (if (and split? (not first?))
                 (p/mk
@@ -188,7 +203,7 @@
 
       (else
         (screen/write-sexpr! screen cursor ls
-           (screen/write-string! screen " . " color-white point))))))
+           (screen/write-string! screen " . " color-white #f point))))))
 
 (define (assert x)
   (display x)
@@ -202,21 +217,21 @@
 
        (cond
           ((pair? datum)
-           (screen/write-string! screen ")" (if selected? color-white color-paren)
+           (screen/write-string! screen ")" (if selected? color-white color-paren) selected?
             (screen/write-list! screen cursor split? datum
-             (screen/write-string! screen "(" (if selected? color-white color-paren) point))))
+             (screen/write-string! screen "(" (if selected? color-white color-paren) selected? point))))
 
           ((symbol? datum)
-           (screen/write-string! screen (symbol->string datum) (if selected? color-string color-symbol) point))
+           (screen/write-string! screen (symbol->string datum) color-symbol selected? point))
 
           ((string? datum)
-           (screen/write-string! screen "\"" color-string
-             (screen/write-string! screen datum color-string
-               (screen/write-string! screen "\"" color-string point))))
+           (screen/write-string! screen "\"" color-string selected?
+             (screen/write-string! screen datum color-string selected?
+               (screen/write-string! screen "\"" color-string selected? point))))
 
           ((number? datum)
            (let ((str (number->string datum)))
-             (screen/write-string! screen str color-number point)))
+             (screen/write-string! screen str color-number selected? point)))
 
           (else (error "bad")))))
 

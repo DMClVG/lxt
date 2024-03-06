@@ -86,9 +86,9 @@
   (begin-frame)
   (let ((size (get-window-size)))
     (draw-rect
-      0 0
-      (assoc-ref size 'width) (assoc-ref size 'height)
-      **background-color**)
+        0 0
+        (assoc-ref size 'width) (assoc-ref size 'height)
+        **background-color**)
 ;;    (draw-text font "yahallo!" 0 0 +WHITE+))
 
     (draw-buffer
@@ -100,7 +100,8 @@
       (screen/width *screen*)
       (screen/height *screen*)
       0
-      0))
+      0
+      **background-color**))
 
 
   (end-frame))
