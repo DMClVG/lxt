@@ -28,6 +28,15 @@
      sexpr-buffer/up!
      sexpr-buffer/delete!
      sexpr-buffer/toggle-split!
+     sexpr-buffer/insert-list!
+     sexpr-buffer/insert!
+     sexpr-buffer/insert-in!
+     sexpr-buffer/start-edit!
+     sexpr-buffer/stop-edit!
+     sexpr-buffer/editbuf
+     sexpr-buffer/edit?
+     sexpr-buffer/input!
+     sexpr-buffer/input-delete!
      p/mk
      p/x
      p/y))
@@ -163,6 +172,7 @@
 (define color-string '(#xb8 #xbb #x26))
 (define color-white '(#xfb #xf1 #xc7))
 (define color-number '(#xfe #x80 #x19))
+(define color-purple '(#xb1 #x62 #x86))
 ;;(define color-white '(#xff #xff #xff))
 
 (define (p/mk x y)
@@ -242,7 +252,11 @@
           ((null? datum)
            (screen/write-string! screen "()" color-white selected? point))
 
-          (else (error "bad")))))
+          ((keyword? datum)
+           (screen/write-string! screen (symbol->string (keyword->symbol datum)) color-purple selected?
+             (screen/write-string! screen "#:" color-purple selected? point)))
+
+          (else (error datum)))))
 
 (define-record-type <cursor>
   (cursor/mk path)
@@ -262,13 +276,17 @@
   (not (sexpr/list? (cursor/current cursor))))
 
 (define-record-type <sexpr-buffer>
-  (sexpr-buffer/mk-raw cursor toplevel)
+  (sexpr-buffer/mk-raw cursor toplevel editbuf)
   sexpr-buffer?
   (cursor sexpr-buffer/cursor sexpr-buffer/cursor!)
-  (toplevel sexpr-buffer/toplevel))
+  (toplevel sexpr-buffer/toplevel)
+  (editbuf sexpr-buffer/editbuf sexpr-buffer/editbuf!))
 
 (define (sexpr-buffer/mk toplevel)
-  (sexpr-buffer/mk-raw (cursor/mk (list toplevel)) toplevel))
+  (sexpr-buffer/mk-raw (cursor/mk (list toplevel)) toplevel '()))
+
+(define (sexpr-buffer/edit? buf)
+  (not (null? (sexpr-buffer/editbuf buf))))
 
 (define (second-or-null x)
   (if (< (length x) 2)
@@ -384,11 +402,74 @@
 
 (define (sexpr/split-off! sexpr) (sexpr/split! sexpr #f))
 
+(define (sexpr/toggle-split! sexpr)
+  (if (sexpr/split? sexpr)
+    (sexpr/traverse sexpr sexpr/split-off!) ; toggle off
+    (sexpr/split! sexpr #t))) ; toggle on
+
 (define (sexpr-buffer/toggle-split! buf)
-  (let ((current (cursor/current (sexpr-buffer/cursor buf))))
-    (if (sexpr/split? current)
-       (sexpr/traverse current sexpr/split-off!) ; toggle off
-       (sexpr/split! current #t)))) ; toggle on
+  (let* ((cursor (sexpr-buffer/cursor buf)))
+    (cond
+      ((cursor/leaf? cursor)
+       (sexpr/toggle-split! (cursor/get-up cursor)))
+
+      ((= (length (sexpr/datum (cursor/current cursor))) 1)
+       (sexpr/toggle-split! (first (sexpr/datum (cursor/current cursor)))))
+
+      (else
+       (sexpr/toggle-split! (cursor/current cursor))))))
+
+(define (sexpr-buffer/insert! buf sexpr)
+  (let ((cursor (sexpr-buffer/cursor buf)))
+    (if (cursor/has-up? cursor)
+      (let*
+        ((current (cursor/current cursor))
+         (up (cursor/get-up cursor))
+         (tail (find-tail (lambda (x) (eq? x current)) (sexpr/datum up))))
+
+        (set-cdr! tail (cons sexpr (cdr tail)))))))
+
+
+(define (sexpr-buffer/insert-in! buf sexpr)
+  (let ((cursor (sexpr-buffer/cursor buf)))
+    (if (not (cursor/leaf? cursor))
+      (let*
+         ((current (cursor/current cursor))
+          (datum (sexpr/datum current)))
+         (sexpr/datum! current (cons sexpr datum))
+         #t)
+      #f)))
+
+(define (sexpr-buffer/insert-list! buf)
+  (sexpr-buffer/insert! buf (sexpr #f '()))
+  (sexpr-buffer/next! buf))
+
+(define (sexpr-buffer/start-edit! buf)
+  (let* ((cursor (sexpr-buffer/cursor buf))
+         (current (cursor/current cursor)))
+    (if (symbol? (sexpr/datum current))
+      (sexpr-buffer/editbuf! buf ""))))
+
+(define (sexpr-buffer/stop-edit! buf)
+  (let* ((cursor (sexpr-buffer/cursor buf))
+         (current (cursor/current cursor))
+         (editbuf (sexpr-buffer/editbuf buf)))
+    (if (symbol? (sexpr/datum current))
+      (sexpr/datum! current (string->symbol editbuf))))
+
+  (sexpr-buffer/editbuf! buf '()))
+
+(define (sexpr-buffer/input! buf input)
+  (sexpr-buffer/editbuf!
+    buf
+    (string-append (sexpr-buffer/editbuf buf) input)))
+
+
+(define (sexpr-buffer/input-delete! buf)
+  (let ((editbuf (sexpr-buffer/editbuf buf)))
+    (when (> (string-length editbuf) 0)
+      (sexpr-buffer/editbuf! buf (substring editbuf 0 (- (string-length editbuf) 1))))))
+
 
 (define (sexpr-buffer/write buf screen)
   (screen/write-sexpr!

@@ -420,7 +420,7 @@ static SCM f_get_window_size() {
   SDL_GetWindowPosition(window_renderer->window, &x, &y);
   return make_alist((SCM[]) {
     sym_width, scm_from_int(w),
-    sym_height, scm_from_int(w),
+    sym_height, scm_from_int(h),
     sym_x, scm_from_int(x),
     sym_y, scm_from_int(y),
     SCM_UNDEFINED
