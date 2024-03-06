@@ -20,6 +20,12 @@
      sexpr
      sexpr/datum
      sexpr/split?
+     sexpr-buffer/mk
+     sexpr-buffer/write
+     sexpr-buffer/next!
+     sexpr-buffer/prev!
+     sexpr-buffer/down!
+     sexpr-buffer/up!
      p/mk
      p/x
      p/y))
@@ -136,6 +142,9 @@
   (split? sexpr/split? sexpr/split!)
   (datum sexpr/datum sexpr/datum!))
 
+(define (sexpr/list? sexpr)
+  (list? (sexpr/datum sexpr)))
+
 (define color-paren '(100 100 100))
 (define color-string '(#xb8 #xbb #x26))
 (define color-symbol '(#xfb #xf1 #xc7))
@@ -153,47 +162,52 @@
     (p/y p)))
 
 
-(define (screen/write-list! screen split? ls begin-point)
+(define (screen/write-list! screen cursor split? ls begin-point)
   (let next
     ((ls ls)
      (first? #t)
-     (point (screen/write-string! screen "(" color-paren begin-point)))
+     (point begin-point))
 
     (cond
       ((pair? ls)
        (next
          (cdr ls)
          #f
-         (screen/write-sexpr! screen (car ls)
+         (screen/write-sexpr! screen cursor (car ls)
            (let ((point (if (or first? split?) point (screen/write-string! screen " " color-white point))))
 
               (if (and split? (not first?))
                 (p/mk
-                 (+ (p/x begin-point) 1)
+                 (p/x begin-point)
                  (+ (p/y point) 1))
 
                 point)))))
 
-
       ((null? ls)
-       (screen/write-string! screen ")" color-paren point))
+       point) ;; exit function
 
       (else
-        (screen/write-string! screen ")" color-paren
-          (screen/write-sexpr! screen ls
-            (screen/write-string! screen " . " color-paren point)))))))
+        (screen/write-sexpr! screen cursor ls
+           (screen/write-string! screen " . " color-white point))))))
 
-(define (screen/write-sexpr! screen sexpr point)
+(define (assert x)
+  (display x)
+  (unless x (error "assert failure")))
 
-  (let ((datum (sexpr/datum sexpr))
+(define (screen/write-sexpr! screen cursor sexpr point)
+
+  (let ((selected? (eq? (cursor/current cursor) sexpr))
+        (datum (sexpr/datum sexpr))
         (split? (sexpr/split? sexpr)))
 
        (cond
           ((pair? datum)
-           (screen/write-list! screen split? datum point))
+           (screen/write-string! screen ")" (if selected? color-white color-paren)
+            (screen/write-list! screen cursor split? datum
+             (screen/write-string! screen "(" (if selected? color-white color-paren) point))))
 
           ((symbol? datum)
-           (screen/write-string! screen (symbol->string datum) color-symbol point))
+           (screen/write-string! screen (symbol->string datum) (if selected? color-string color-symbol) point))
 
           ((string? datum)
            (screen/write-string! screen "\"" color-string
@@ -206,32 +220,103 @@
 
           (else (error "bad")))))
 
-;;(define-record-type <cursor>
-;;  (cursor/new sexpr index)
-;;  cursor?
-;;  (sexpr cursor/sexpr)
-;;  ())
-;;
-;;
-;;(define-record-type <sexpr-buffer>
-;;  (sexpr-buffer/new-raw cursor toplevel)
-;;  sexpr-buffer?
-;;  (cursor sexpr-buffer/cursor sexpr-buffer/cursor!)
-;;  (toplevel sexpr-buffer/toplevel))
-;;
-;;(define (sexpr-buffer/new toplevel)
-;;  (sexpr-buffer/new-raw))
-;;
-;;(define (sexpr-buffer/up buf)
-;;  ())
-;;
-;;(define (sexpr-buffer/down buf)
-;;  ())
-;;
-;;(define (sexpr-buffer/next buf))
-;;
+(define-record-type <cursor>
+  (cursor/mk path)
+  cursor?
+  (path cursor/path))
+
+(define (cursor/current cursor)
+  (first (cursor/path cursor)))
+
+(define (cursor/up cursor)
+  (second (cursor/path cursor)))
+
+(define (cursor/has-up? cursor)
+  (> (length (cursor/path cursor)) 1))
+
+(define (cursor/leaf? cursor)
+  (not (sexpr/list? (cursor/current cursor))))
+
+(define-record-type <sexpr-buffer>
+  (sexpr-buffer/mk-raw cursor toplevel)
+  sexpr-buffer?
+  (cursor sexpr-buffer/cursor sexpr-buffer/cursor!)
+  (toplevel sexpr-buffer/toplevel))
+
+(define (sexpr-buffer/mk toplevel)
+  (sexpr-buffer/mk-raw (cursor/mk (list toplevel)) toplevel))
+
+(define (sexpr-buffer/up buf)
+  (sexpr-buffer/cursor!
+    buf
+    (cursor/up (sexpr-buffer/cursor buf))))
+
+(define (second-or-null x)
+  (if (< (length x) 2)
+    '()
+    (second x)))
+
+(define (last-or-null x)
+  (if (null? x)
+    '()
+    (last x)))
+
+(define (sexpr-buffer/down! buf)
+  (let*
+    ((cursor (sexpr-buffer/cursor buf))
+     (current (cursor/current cursor))
+     (path (cursor/path cursor))
+     (datum (sexpr/datum current)))
+    (when (and (not (cursor/leaf? cursor)) (not (null? datum)))
+      (sexpr-buffer/cursor! buf (cursor/mk (cons (first datum) path))))))
+
+
+(define (sexpr-buffer/up! buf)
+  (let*
+    ((cursor (sexpr-buffer/cursor buf))
+     (path (cursor/path cursor)))
+    (when (cursor/has-up? cursor)
+      (sexpr-buffer/cursor! buf (cursor/mk (cdr path))))))
+
+
+(define (sexpr-buffer/next! buf)
+  (if (cursor/has-up? (sexpr-buffer/cursor buf))
+    (let*
+        ((cursor (sexpr-buffer/cursor buf))
+         (current (cursor/current cursor))
+         (up (cursor/up cursor))
+         (next (second-or-null (find-tail (lambda (sexpr) (eq? sexpr current)) (sexpr/datum up)))))
+
+        (unless (null? next)
+          (sexpr-buffer/cursor! buf (cursor/mk (cons next (cdr (cursor/path cursor)))))))))
+
+
+(define (sexpr-buffer/prev! buf)
+  (if (cursor/has-up? (sexpr-buffer/cursor buf))
+    (let*
+        ((cursor (sexpr-buffer/cursor buf))
+         (current (cursor/current cursor))
+         (up (cursor/up cursor))
+         (prev (last-or-null
+                 (take-while
+                   (lambda (sexpr) (not (eq? sexpr current)))
+                   (sexpr/datum up)))))
+
+        (unless (null? prev)
+          (sexpr-buffer/cursor! buf (cursor/mk (cons prev (cdr (cursor/path cursor)))))))))
+
+
+
+(define (sexpr-buffer/write buf screen)
+  (screen/write-sexpr!
+    screen
+    (sexpr-buffer/cursor buf)
+    (sexpr-buffer/toplevel buf)
+    (p/mk 0 0)))
+
+
 ;;(define (sexpr-buffer/prev buf))
-;;
+
 ;;(define (sexpr-buffer/toggle-split buf))
 ;;
 ;;(define (sexpr-buffer/toggle-edit buf))
@@ -239,3 +324,5 @@
 ;;(define (sexpr-buffer/create-paren buf))
 ;;
 ;;(define (sexpr-buffer/create-value buf))
+;;
+;;(define (sexpr-buffer/delete buf))

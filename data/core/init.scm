@@ -26,20 +26,55 @@
       (sexpr #t y))
     x))
 
-(screen/write-sexpr!
-  *screen*
+(define example-code
   (map-quote-to-sexpr
     '(if (equal? "banana" "apple")
        (display "banana is apple")
-       (display "banana is not apple")))
+       (display "banana is not apple"))))
 
-  (p/mk 0 0))
+(define *current-buffer* (sexpr-buffer/mk example-code))
+
+(sexpr-buffer/write *current-buffer* *screen*)
+
+(define (process-key-press key)
+  (cond
+    ((equal? key "n")
+     (sexpr-buffer/next! *current-buffer*)
+     (sexpr-buffer/write *current-buffer* *screen*))
+
+    ((equal? key "b")
+     (sexpr-buffer/prev! *current-buffer*)
+     (sexpr-buffer/write *current-buffer* *screen*))
+
+    ((equal? key "d")
+     (sexpr-buffer/down! *current-buffer*)
+     (sexpr-buffer/write *current-buffer* *screen*))
+
+    ((equal? key "u")
+     (sexpr-buffer/up! *current-buffer*)
+     (sexpr-buffer/write *current-buffer* *screen*))))
+
+
+
+(define (trace x)
+  (write x)
+  (newline))
 
 (define (process-event event)
   (case (assoc-ref event 'type)
-    ('quit (set! **running** #f)))
-  (display event)
-  (newline)
+
+    ('quit
+     (set! **running** #f))
+
+    ('key-pressed
+     (let ((key (assoc-ref event 'key)))
+       (process-key-press key)))
+    (else => trace))
+
+
+
+;;  (display event)
+;;  (newline)
   '())
 
 
