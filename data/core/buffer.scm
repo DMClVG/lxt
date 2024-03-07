@@ -37,9 +37,13 @@
      sexpr-buffer/edit?
      sexpr-buffer/input!
      sexpr-buffer/input-delete!
+     sexpr-buffer/offset
+     sexpr-buffer/offset!
      p/mk
      p/x
-     p/y))
+     p/x+
+     p/y
+     p/y+))
 
 
 
@@ -171,7 +175,7 @@
 (define color-paren '(100 100 100))
 (define color-string '(#xb8 #xbb #x26))
 (define color-white '(#xfb #xf1 #xc7))
-(define color-number '(#xfe #x80 #x19))
+(define color-constant '(#xfe #x80 #x19))
 (define color-purple '(#xb1 #x62 #x86))
 ;;(define color-white '(#xff #xff #xff))
 
@@ -192,6 +196,10 @@
     (+ n (p/x p))
     (p/y p)))
 
+(define (p/y+ p n)
+  (p/mk
+    (p/x p)
+    (+ n (p/y p))))
 
 (define (screen/write-list! screen cursor split? ls begin-point)
   (let next
@@ -247,7 +255,7 @@
 
           ((number? datum)
            (let ((str (number->string datum)))
-             (screen/write-string! screen str color-number selected? point)))
+             (screen/write-string! screen str color-constant selected? point)))
 
           ((null? datum)
            (screen/write-string! screen "()" color-white selected? point))
@@ -255,6 +263,11 @@
           ((keyword? datum)
            (screen/write-string! screen (symbol->string (keyword->symbol datum)) color-purple selected?
              (screen/write-string! screen "#:" color-purple selected? point)))
+
+          ((boolean? datum)
+           (if datum
+            (screen/write-string! screen "#t" color-constant selected? point)
+            (screen/write-string! screen "#f" color-constant selected? point)))
 
           (else (error datum)))))
 
@@ -276,14 +289,21 @@
   (not (sexpr/list? (cursor/current cursor))))
 
 (define-record-type <sexpr-buffer>
-  (sexpr-buffer/mk-raw cursor toplevel editbuf)
+  (sexpr-buffer/mk-raw cursor toplevel editbuf offset)
   sexpr-buffer?
   (cursor sexpr-buffer/cursor sexpr-buffer/cursor!)
   (toplevel sexpr-buffer/toplevel)
-  (editbuf sexpr-buffer/editbuf sexpr-buffer/editbuf!))
+  (editbuf sexpr-buffer/editbuf sexpr-buffer/editbuf!)
+  (offset sexpr-buffer/offset sexpr-buffer/offset!))
+
+;;(define (sexpr-buffer/cursor! buf cursor)
+;;  (sexpr-buffer/cursor-raw! buf cursor)
+;;  (let ((current-y (cursor/current cursor)))
+;;    (cond
+;;        (>= (p/y ())))))
 
 (define (sexpr-buffer/mk toplevel)
-  (sexpr-buffer/mk-raw (cursor/mk (list toplevel)) toplevel '()))
+  (sexpr-buffer/mk-raw (cursor/mk (list toplevel)) toplevel '() (p/mk 0 0)))
 
 (define (sexpr-buffer/edit? buf)
   (not (null? (sexpr-buffer/editbuf buf))))
@@ -471,12 +491,15 @@
       (sexpr-buffer/editbuf! buf (substring editbuf 0 (- (string-length editbuf) 1))))))
 
 
+
+
 (define (sexpr-buffer/write buf screen)
-  (screen/write-sexpr!
-    screen
-    (sexpr-buffer/cursor buf)
-    (sexpr-buffer/toplevel buf)
-    (p/mk 0 0)))
+  (let ((offset (sexpr-buffer/offset buf)))
+    (screen/write-sexpr!
+      screen
+      (sexpr-buffer/cursor buf)
+      (sexpr-buffer/toplevel buf)
+      (p/mk (- (p/x offset)) (- (p/y offset))))))
 
 
 ;;(define (sexpr-buffer/prev buf))

@@ -13,7 +13,7 @@
 (define +WHITE+ '(255 255 255 255))
 (define **background-color** '(#x28 #x28 #x28 255))
 
-(define *screen* (screen/new 80 60))
+(define *screen* (screen/new 140 60))
 
 (define (traverse f x)
   (if (pair? x)
@@ -29,7 +29,12 @@
 (define code
   (call-with-input-file "buffer.scm"
     (lambda (f)
-      (read f))))
+      (reverse
+       (let loop ((out '()))
+         (let ((x (read f)))
+           (if (eof-object? x)
+             out
+             (loop (cons x out)))))))))
 
 (display code)
 (newline)
@@ -108,6 +113,15 @@
       (sexpr-buffer/insert-list! *current-buffer*)
       (screen/clear! *screen*)
       (sexpr-buffer/write *current-buffer* *screen*))
+
+     ((and *shift* (equal? key "j")
+       (sexpr-buffer/offset! *current-buffer* (p/y+ (sexpr-buffer/offset *current-buffer*) 4))
+       (screen/clear! *screen*)
+       (sexpr-buffer/write *current-buffer* *screen*)))
+     ((and *shift* (equal? key "k")
+       (sexpr-buffer/offset! *current-buffer* (p/y+ (sexpr-buffer/offset *current-buffer*) -4))
+       (screen/clear! *screen*)
+       (sexpr-buffer/write *current-buffer* *screen*)))
 
      ((and  (equal? key "j"))
       (sexpr-buffer/next! *current-buffer*)
