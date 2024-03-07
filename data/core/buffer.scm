@@ -537,22 +537,20 @@
        (lambda (x) (sexpr/traverse x f))
        (sexpr/datum sexpr))))
 
-(define (sexpr/split-off! sexpr) (sexpr/split! sexpr #f))
+(define (sexpr/disable-split! sexpr) (sexpr/split! sexpr #f))
+(define (sexpr/enable-split! sexpr) (sexpr/split! sexpr #t))
 
-(define (sexpr/toggle-split! sexpr)
-  (sexpr/split! sexpr (not (sexpr/split? sexpr))))
+;;(define (sexpr/toggle-split! sexpr)
+;;  (sexpr/split! sexpr (not (sexpr/split? sexpr))))
 
 (define (sexpr-buffer/toggle-split! buf)
   (let* ((cursor (sexpr-buffer/cursor buf)))
-    (cond
-      ((cursor/leaf? cursor)
-       (sexpr/toggle-split! (cursor/get-up cursor)))
+    (when (cursor/leaf? cursor)
+      (set! cursor (cursor/up cursor)))
 
-      ((= (length (sexpr/datum (cursor/current cursor))) 1)
-       (sexpr/toggle-split! (first (sexpr/datum (cursor/current cursor)))))
-
-      (else
-       (sexpr/toggle-split! (cursor/current cursor))))))
+    (if (sexpr/split? (cursor/current cursor))
+      (sexpr/traverse (cursor/current cursor) sexpr/disable-split!)
+      (for-each sexpr/enable-split! (cursor/path cursor)))))
 
 (define (sexpr-buffer/insert! buf sexpr)
   (let ((cursor (sexpr-buffer/cursor buf)))
