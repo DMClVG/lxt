@@ -36,8 +36,6 @@
              out
              (loop (cons x out)))))))))
 
-(display code)
-(newline)
 
 ;;(define example-code
 ;;  (map-quote-to-sexpr

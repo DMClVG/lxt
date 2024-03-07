@@ -178,6 +178,7 @@
 (define color-red '(#xcc #x24 #x1d))
 (define color-constant '(#xfe #x80 #x19))
 (define color-purple '(#xb1 #x62 #x86))
+(define color-yellow '(#xd7 #x99 #x21))
 ;;(define color-white '(#xff #xff #xff))
 
 (define procedures
@@ -294,17 +295,38 @@
   (display x)
   (unless x (error "assert failure")))
 
+(define-record-type <cursor>
+  (cursor/mk path)
+  cursor?
+  (path cursor/path))
+
 (define (screen/write-sexpr! screen cursor sexpr parent-split? point)
 
-  (let ((selected? (eq? (cursor/current cursor) sexpr))
-        (datum (sexpr/datum sexpr))
-        (split? (and (sexpr/split? sexpr) parent-split?)))
+  (let* ((selected? (eq? (cursor/current cursor) sexpr))
+         (datum (sexpr/datum sexpr))
+         (split? (and (sexpr/split? sexpr) parent-split?))
+         (in-path? (and (not selected?) (memq sexpr (cursor/path cursor)))))
 
        (cond
           ((pair? datum)
-           (screen/write-string! screen ")" (if selected? color-white color-paren) selected?
+           (screen/write-string!
+             screen
+             ")"
+             (cond
+               (selected? color-white)
+               (in-path? color-white)
+               (else color-paren))
+             selected?
             (screen/write-list! screen cursor split? datum
-             (screen/write-string! screen "(" (if selected? color-white color-paren) selected? point))))
+             (screen/write-string!
+               screen
+               "("
+               (cond
+                 (selected? color-white)
+                 (in-path? color-white)
+                 (else color-paren))
+               selected?
+               point))))
 
           ((symbol? datum)
            (screen/write-string!
@@ -339,11 +361,6 @@
             (screen/write-string! screen "#f" color-constant selected? point)))
 
           (else (error datum)))))
-
-(define-record-type <cursor>
-  (cursor/mk path)
-  cursor?
-  (path cursor/path))
 
 (define (cursor/current cursor)
   (first (cursor/path cursor)))
