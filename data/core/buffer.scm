@@ -28,6 +28,8 @@
      sexpr-buffer/up!
      sexpr-buffer/goto-left!
      sexpr-buffer/goto-right!
+     sexpr-buffer/jump-left!
+     sexpr-buffer/jump-right!
      sexpr-buffer/goto-down!
      sexpr-buffer/goto-up!
      sexpr-buffer/delete!
@@ -37,6 +39,7 @@
      sexpr-buffer/insert-in!
      sexpr-buffer/yank!
      sexpr-buffer/paste!
+     sexpr-buffer/toggle-closer/farther!
      sexpr-buffer/start-edit!
      sexpr-buffer/stop-edit!
      sexpr-buffer/editbuf
@@ -176,7 +179,7 @@
   (datum sexpr/datum sexpr/datum!))
 
 (define (sexpr/list? sexpr)
-  (list? (sexpr/datum sexpr)))
+  (pair? (sexpr/datum sexpr)))
 
 (define color-paren '(100 100 100))
 (define color-green '(#xb8 #xbb #x26))
@@ -304,9 +307,10 @@
   (unless x (error "assert failure")))
 
 (define-record-type <cursor>
-  (cursor/mk path)
+  (cursor/mk path farther?)
   cursor?
-  (path cursor/path))
+  (path cursor/path)
+  (farther? cursor/farther?))
 
 (define (screen/write-sexpr! screen cursor sexpr parent-split? point)
 
@@ -321,7 +325,7 @@
              screen
              ")"
              (cond
-               (selected? color-white)
+               (selected? (if (cursor/farther? cursor) color-white color-yellow))
                (in-path? color-white)
                (else color-paren))
              selected?
@@ -330,7 +334,7 @@
                screen
                "("
                (cond
-                 (selected? color-white)
+                 (selected? (if (cursor/farther? cursor) color-yellow color-white))
                  (in-path? color-white)
                  (else color-paren))
                selected?
@@ -398,7 +402,7 @@
 ;;        (>= (p/y ())))))
 
 (define (sexpr-buffer/mk toplevel)
-  (sexpr-buffer/mk-raw (cursor/mk (list toplevel)) toplevel '() (p/mk 0 0) '()))
+  (sexpr-buffer/mk-raw (cursor/mk (list toplevel) #f) toplevel '() (p/mk 0 0) '()))
 
 (define (sexpr-buffer/edit? buf)
   (not (null? (sexpr-buffer/editbuf buf))))
@@ -413,6 +417,11 @@
     '()
     (last x)))
 
+(define (cursor/closer cursor)
+  (cursor/mk (cursor/path cursor) #f))
+
+(define (cursor/farther cursor)
+  (cursor/mk (cursor/path cursor) #t))
 
 (define (cursor/next cursor)
   (if (cursor/has-up? cursor)
@@ -422,8 +431,8 @@
          (next (second-or-null (find-tail (lambda (sexpr) (eq? sexpr current)) (sexpr/datum up)))))
 
         (if (not (null? next))
-          (cursor/mk (cons next (cdr (cursor/path cursor))))
-          (cursor/up cursor)))
+          (cursor/mk (cons next (cdr (cursor/path cursor))) #f)
+          (cursor/farther (cursor/up cursor))))
     cursor))
 
 (define (cursor/skip cursor)
@@ -441,9 +450,9 @@
 
         (cond
           ((not (null? next))
-           (cursor/mk (cons next (cdr (cursor/path cursor)))))
+           (cursor/mk (cons next (cdr (cursor/path cursor))) #f))
           ((not (null? prev))
-           (cursor/mk (cons prev (cdr (cursor/path cursor)))))
+           (cursor/mk (cons prev (cdr (cursor/path cursor))) #t))
           (else
            (cursor/up cursor))))
 
@@ -461,8 +470,8 @@
                    (sexpr/datum up)))))
 
         (if (not (null? prev))
-          (cursor/mk (cons prev (cdr (cursor/path cursor))))
-          (cursor/up cursor)))
+          (cursor/mk (cons prev (cdr (cursor/path cursor))) #t)
+          (cursor/closer (cursor/up cursor))))
     cursor))
 
 (define (cursor/down cursor)
@@ -471,13 +480,13 @@
      (path (cursor/path cursor))
      (datum (sexpr/datum current)))
     (if (and (not (cursor/leaf? cursor)) (not (null? datum)))
-      (cursor/mk (cons (first datum) path))
+      (cursor/mk (cons (first datum) path) #f)
       cursor)))
 
 (define (cursor/up cursor)
   (let* ((path (cursor/path cursor)))
     (if (cursor/has-up? cursor)
-      (cursor/mk (cdr path))
+      (cursor/mk (cdr path) (cursor/farther? cursor))
       cursor)))
 
 (define (sexpr-buffer/up! buf)
@@ -624,9 +633,14 @@
   (let*
     ((current (cursor/current cursor)))
     (if (cursor/has-up? cursor)
-      (if (sexpr/split? (cursor/get-up cursor))
-        (cursor/prev cursor)
-        (cursor/up cursor))
+      (if (and (not (cursor/leaf? cursor))
+               (cursor/farther? cursor)
+               (sexpr/split? current))
+        (cursor/farther (cursor/last cursor))
+
+        (if (sexpr/split? (cursor/get-up cursor))
+          (cursor/prev cursor)
+          (cursor/goto-up (cursor/closer (cursor/up cursor)))))
       cursor)))
 
 
@@ -634,26 +648,54 @@
   (let*
     ((current (cursor/current cursor)))
     (if (cursor/has-up? cursor)
-      (if (sexpr/split? (cursor/get-up cursor))
-        (cursor/next cursor)
-        (cursor/down cursor))
+      (if (and (not (cursor/leaf? cursor))
+               (not (cursor/farther? cursor))
+               (sexpr/split? current))
+        (cursor/closer (cursor/down cursor))
+
+        (if (sexpr/split? (cursor/get-up cursor))
+          (cursor/next cursor)
+          (cursor/goto-down (cursor/farther (cursor/up cursor)))))
       cursor)))
+
+(define (cursor/last cursor)
+  (let
+    ((current (cursor/current cursor)))
+    (if (cursor/leaf? cursor)
+      cursor
+      (cursor/mk
+        (cons (last (sexpr/datum current)) (cursor/path cursor))
+        #t))))
 
 (define (cursor/goto-left cursor)
-  (let* ((current (cursor/current cursor)))
-    (if (cursor/has-up? cursor)
-      (if (sexpr/split? (cursor/get-up cursor))
-        (cursor/up cursor)
-        (cursor/prev cursor))
-      cursor)))
+ (if (cursor/has-up? cursor)
+   (cond
+
+     ((and (not (cursor/leaf? cursor))
+           (cursor/farther? cursor))
+      (cursor/last cursor))
+
+     (else
+       (if (sexpr/split? (cursor/get-up cursor))
+         (cursor/last cursor)
+         (cursor/prev cursor))))
+
+   cursor))
 
 (define (cursor/goto-right cursor)
-  (let* ((current (cursor/current cursor)))
-    (if (cursor/has-up? cursor)
-      (if (sexpr/split? (cursor/get-up cursor))
-        (cursor/down cursor)
-        (cursor/next cursor))
-      (cursor/down cursor))))
+ (if (cursor/has-up? cursor)
+   (cond
+
+     ((and (not (cursor/leaf? cursor))
+           (not (cursor/farther? cursor)))
+      (cursor/down cursor))
+
+     (else
+       (if (sexpr/split? (cursor/get-up cursor))
+         (cursor/down cursor)
+         (cursor/next cursor))))
+
+   (cursor/down cursor)))
 
 (define (sexpr-buffer/write buf screen)
   (let ((offset (sexpr-buffer/offset buf)))
@@ -663,6 +705,18 @@
       (sexpr-buffer/toplevel buf)
       #t
       (p/mk (- (p/x offset)) (- (p/y offset))))))
+
+(define (sexpr-buffer/toggle-closer/farther! buf)
+  (let ((cursor (sexpr-buffer/cursor buf)))
+    (if (cursor/leaf? cursor)
+       (begin
+         (sexpr-buffer/up! buf)
+         (sexpr-buffer/toggle-closer/farther! buf))
+       (sexpr-buffer/cursor!
+         buf
+         (cursor/mk
+           (cursor/path cursor)
+           (not (cursor/farther? cursor)))))))
 
 
 

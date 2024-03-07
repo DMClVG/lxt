@@ -66,7 +66,6 @@
    (cond
      ((equal? key "escape")
       (sexpr-buffer/stop-edit! *current-buffer*)
-      (sexpr-buffer/delete! *current-buffer*)
       (screen/clear! *screen*)
       (sexpr-buffer/write *current-buffer* *screen*))
 
@@ -98,6 +97,10 @@
       (sexpr-buffer/write *current-buffer* *screen*)
       (sexpr-buffer/start-edit! *current-buffer*)
       (set! *edit-debounce* #t))
+
+     ((equal? key ";")
+      (sexpr-buffer/toggle-closer/farther! *current-buffer*)
+      (sexpr-buffer/write *current-buffer* *screen*))
 
      ((equal? key "i")
       (when (sexpr-buffer/insert-in! *current-buffer* (sexpr #f 'a))
@@ -154,6 +157,14 @@
       (sexpr-buffer/goto-up! *current-buffer*)
       (sexpr-buffer/write *current-buffer* *screen*))
 
+     ((and *shift* (equal? key "l"))
+      (sexpr-buffer/jump-right! *current-buffer*)
+      (sexpr-buffer/write *current-buffer* *screen*))
+
+     ((and *shift* (equal? key "h"))
+      (sexpr-buffer/jump-left! *current-buffer*)
+      (sexpr-buffer/write *current-buffer* *screen*))
+
      ((equal? key "l")
       (sexpr-buffer/goto-right! *current-buffer*)
       (sexpr-buffer/write *current-buffer* *screen*))
@@ -161,6 +172,7 @@
      ((equal? key "h")
       (sexpr-buffer/goto-left! *current-buffer*)
       (sexpr-buffer/write *current-buffer* *screen*)))))
+
 
 (define (process-key-released key)
   (cond
