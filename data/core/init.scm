@@ -1,7 +1,7 @@
 (define font
   (load-font
     "/mnt/code/apps/mon/data/fonts/JetBrainsMono-Regular.ttf"
-    12))
+    16))
 
 
 (set! %load-path (cons "." %load-path))
@@ -13,7 +13,7 @@
 (define +WHITE+ '(255 255 255 255))
 (define **background-color** '(#x28 #x28 #x28 255))
 
-(define *screen* (screen/new 140 60))
+(define *screen* (screen/new 250 140))
 
 (define (traverse f x)
   (if (pair? x)
@@ -23,7 +23,7 @@
 (define (map-quote-to-sexpr x)
   (traverse
     (lambda (y)
-      (sexpr #t y))
+      (sexpr #f y))
     x))
 
 (define code

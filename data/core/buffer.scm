@@ -173,11 +173,72 @@
   (list? (sexpr/datum sexpr)))
 
 (define color-paren '(100 100 100))
-(define color-string '(#xb8 #xbb #x26))
+(define color-green '(#xb8 #xbb #x26))
 (define color-white '(#xfb #xf1 #xc7))
+(define color-red '(#xcc #x24 #x1d))
 (define color-constant '(#xfe #x80 #x19))
 (define color-purple '(#xb1 #x62 #x86))
 ;;(define color-white '(#xff #xff #xff))
+
+(define procedures
+  '(
+    procedure?
+    first
+    second
+    third
+    last
+    car
+    cdr
+    eq?
+    equal?
+    eqv?
+    error
+    map
+    pair?
+    null?
+    display
+    newline
+    *
+    +
+    /
+    floor/
+    -
+    <
+    >=
+    <=
+    >
+    list-ref
+    list-set!
+    list?
+    reverse
+    cons
+    symbol?
+    not
+    boolean?
+    number?
+    list
+    keyword?
+    string?))
+
+(define keywords
+  '(define
+    if
+    and
+    or
+    define-record-type
+    let*
+    cond
+    or
+    else
+    let
+    when
+    unless
+    lambda
+    use-modules
+    define-module
+    set!
+    quote))
+
 
 (define (p/mk x y)
   (list x y))
@@ -212,7 +273,7 @@
        (next
          (cdr ls)
          #f
-         (screen/write-sexpr! screen cursor (car ls)
+         (screen/write-sexpr! screen cursor (car ls) split?
            (let ((point (if (or first? split?) point (screen/write-string! screen " " color-white #f point))))
 
               (if (and split? (not first?))
@@ -226,18 +287,18 @@
        point) ;; exit function
 
       (else
-        (screen/write-sexpr! screen cursor ls
+        (screen/write-sexpr! screen cursor ls split?
            (screen/write-string! screen " . " color-white #f point))))))
 
 (define (assert x)
   (display x)
   (unless x (error "assert failure")))
 
-(define (screen/write-sexpr! screen cursor sexpr point)
+(define (screen/write-sexpr! screen cursor sexpr parent-split? point)
 
   (let ((selected? (eq? (cursor/current cursor) sexpr))
         (datum (sexpr/datum sexpr))
-        (split? (sexpr/split? sexpr)))
+        (split? (and (sexpr/split? sexpr) parent-split?)))
 
        (cond
           ((pair? datum)
@@ -246,12 +307,20 @@
              (screen/write-string! screen "(" (if selected? color-white color-paren) selected? point))))
 
           ((symbol? datum)
-           (screen/write-string! screen (symbol->string datum) color-white selected? point))
+           (screen/write-string!
+             screen
+             (symbol->string datum)
+             (cond
+               ((member datum keywords) color-red)
+               ((member datum procedures) color-green)
+               (else color-white))
+             selected?
+             point))
 
           ((string? datum)
-           (screen/write-string! screen "\"" color-string selected?
-             (screen/write-string! screen datum color-string selected?
-               (screen/write-string! screen "\"" color-string selected? point))))
+           (screen/write-string! screen "\"" color-green selected?
+             (screen/write-string! screen datum color-green selected?
+               (screen/write-string! screen "\"" color-green selected? point))))
 
           ((number? datum)
            (let ((str (number->string datum)))
@@ -423,9 +492,7 @@
 (define (sexpr/split-off! sexpr) (sexpr/split! sexpr #f))
 
 (define (sexpr/toggle-split! sexpr)
-  (if (sexpr/split? sexpr)
-    (sexpr/traverse sexpr sexpr/split-off!) ; toggle off
-    (sexpr/split! sexpr #t))) ; toggle on
+  (sexpr/split! sexpr (not (sexpr/split? sexpr))))
 
 (define (sexpr-buffer/toggle-split! buf)
   (let* ((cursor (sexpr-buffer/cursor buf)))
@@ -499,7 +566,9 @@
       screen
       (sexpr-buffer/cursor buf)
       (sexpr-buffer/toplevel buf)
+      #t
       (p/mk (- (p/x offset)) (- (p/y offset))))))
+
 
 
 ;;(define (sexpr-buffer/prev buf))
