@@ -62,12 +62,20 @@
 (define (process-key-pressed key)
   (if (sexpr-buffer/edit? *current-buffer*)
    (cond
-     ((or
-        (equal? key "escape")
-        (equal? key "space"))
+     ((equal? key "escape")
       (sexpr-buffer/stop-edit! *current-buffer*)
+      (sexpr-buffer/delete! *current-buffer*)
       (screen/clear! *screen*)
       (sexpr-buffer/write *current-buffer* *screen*))
+
+     ((equal? key "space")
+      (sexpr-buffer/stop-edit! *current-buffer*)
+      (sexpr-buffer/insert! *current-buffer* (sexpr #f 'a))
+      (sexpr-buffer/next! *current-buffer*)
+      (sexpr-buffer/start-edit! *current-buffer*)
+      (screen/clear! *screen*)
+      (sexpr-buffer/write *current-buffer* *screen*)
+      (set! *edit-debounce* #t))
 
      ((equal? key "backspace")
       (sexpr-buffer/input-delete! *current-buffer*))
@@ -98,7 +106,17 @@
         (set! *edit-debounce* #t)))
 
      ((equal? key "d")
+      (sexpr-buffer/yank! *current-buffer*)
       (sexpr-buffer/delete! *current-buffer*)
+      (screen/clear! *screen*)
+      (sexpr-buffer/write *current-buffer* *screen*))
+
+     ((equal? key "y")
+      (sexpr-buffer/yank! *current-buffer*))
+
+     ((equal? key "p")
+      (sexpr-buffer/paste! *current-buffer*)
+      (sexpr-buffer/next! *current-buffer*)
       (screen/clear! *screen*)
       (sexpr-buffer/write *current-buffer* *screen*))
 
@@ -109,8 +127,12 @@
 
      ((equal? key "o")
       (sexpr-buffer/insert-list! *current-buffer*)
+      (sexpr-buffer/insert-in! *current-buffer* (sexpr #f 'a))
+      (sexpr-buffer/down! *current-buffer*)
+      (sexpr-buffer/start-edit! *current-buffer*)
       (screen/clear! *screen*)
-      (sexpr-buffer/write *current-buffer* *screen*))
+      (sexpr-buffer/write *current-buffer* *screen*)
+      (set! *edit-debounce* #t))
 
      ((and *shift* (equal? key "j")
        (sexpr-buffer/offset! *current-buffer* (p/y+ (sexpr-buffer/offset *current-buffer*) 4))

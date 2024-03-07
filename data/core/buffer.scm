@@ -31,6 +31,8 @@
      sexpr-buffer/insert-list!
      sexpr-buffer/insert!
      sexpr-buffer/insert-in!
+     sexpr-buffer/yank!
+     sexpr-buffer/paste!
      sexpr-buffer/start-edit!
      sexpr-buffer/stop-edit!
      sexpr-buffer/editbuf
@@ -208,6 +210,7 @@
     >=
     <=
     >
+    =
     list-ref
     list-set!
     list?
@@ -216,6 +219,7 @@
     symbol?
     not
     boolean?
+    pair?
     number?
     list
     keyword?
@@ -375,12 +379,13 @@
   (not (sexpr/list? (cursor/current cursor))))
 
 (define-record-type <sexpr-buffer>
-  (sexpr-buffer/mk-raw cursor toplevel editbuf offset)
+  (sexpr-buffer/mk-raw cursor toplevel editbuf offset clipboard)
   sexpr-buffer?
   (cursor sexpr-buffer/cursor sexpr-buffer/cursor!)
   (toplevel sexpr-buffer/toplevel)
   (editbuf sexpr-buffer/editbuf sexpr-buffer/editbuf!)
-  (offset sexpr-buffer/offset sexpr-buffer/offset!))
+  (offset sexpr-buffer/offset sexpr-buffer/offset!)
+  (clipboard sexpr-buffer/clipboard sexpr-buffer/clipboard!))
 
 ;;(define (sexpr-buffer/cursor! buf cursor)
 ;;  (sexpr-buffer/cursor-raw! buf cursor)
@@ -389,7 +394,7 @@
 ;;        (>= (p/y ())))))
 
 (define (sexpr-buffer/mk toplevel)
-  (sexpr-buffer/mk-raw (cursor/mk (list toplevel)) toplevel '() (p/mk 0 0)))
+  (sexpr-buffer/mk-raw (cursor/mk (list toplevel)) toplevel '() (p/mk 0 0) '()))
 
 (define (sexpr-buffer/edit? buf)
   (not (null? (sexpr-buffer/editbuf buf))))
@@ -574,8 +579,18 @@
     (when (> (string-length editbuf) 0)
       (sexpr-buffer/editbuf! buf (substring editbuf 0 (- (string-length editbuf) 1))))))
 
+(define (sexpr-buffer/yank! buf)
+  (let* ((cursor (sexpr-buffer/cursor buf))
+         (current (cursor/current cursor)))
+    (sexpr-buffer/clipboard! buf current)))
 
+(define (sexpr/make-unique x)
+  (if (sexpr/list? x)
+    (sexpr (sexpr/split? x) (map sexpr/make-unique (sexpr/datum x)))
+    (sexpr (sexpr/split? x) (sexpr/datum x))))
 
+(define (sexpr-buffer/paste! buf)
+  (sexpr-buffer/insert! buf (sexpr/make-unique (sexpr-buffer/clipboard buf))))
 
 (define (sexpr-buffer/write buf screen)
   (let ((offset (sexpr-buffer/offset buf)))
