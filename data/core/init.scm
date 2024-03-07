@@ -57,7 +57,9 @@
   (if *edit-debounce*
     (set! *edit-debounce* #f)
     (when (sexpr-buffer/edit? *current-buffer*)
-      (sexpr-buffer/input! *current-buffer* key))))
+      (sexpr-buffer/input! *current-buffer* key)
+      (screen/clear! *screen*)
+      (sexpr-buffer/write *current-buffer* *screen*))))
 
 (define (process-key-pressed key)
   (if (sexpr-buffer/edit? *current-buffer*)
@@ -127,6 +129,7 @@
 
      ((equal? key "o")
       (sexpr-buffer/insert-list! *current-buffer*)
+      (sexpr-buffer/next! *current-buffer*)
       (sexpr-buffer/insert-in! *current-buffer* (sexpr #f 'a))
       (sexpr-buffer/down! *current-buffer*)
       (sexpr-buffer/start-edit! *current-buffer*)
@@ -144,19 +147,19 @@
        (sexpr-buffer/write *current-buffer* *screen*)))
 
      ((and  (equal? key "j"))
-      (sexpr-buffer/next! *current-buffer*)
+      (sexpr-buffer/goto-down! *current-buffer*)
       (sexpr-buffer/write *current-buffer* *screen*))
 
      ((and (equal? key "k"))
-      (sexpr-buffer/prev! *current-buffer*)
+      (sexpr-buffer/goto-up! *current-buffer*)
       (sexpr-buffer/write *current-buffer* *screen*))
 
      ((equal? key "l")
-      (sexpr-buffer/down! *current-buffer*)
+      (sexpr-buffer/goto-right! *current-buffer*)
       (sexpr-buffer/write *current-buffer* *screen*))
 
      ((equal? key "h")
-      (sexpr-buffer/up! *current-buffer*)
+      (sexpr-buffer/goto-left! *current-buffer*)
       (sexpr-buffer/write *current-buffer* *screen*)))))
 
 (define (process-key-released key)

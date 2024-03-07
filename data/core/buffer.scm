@@ -26,6 +26,10 @@
      sexpr-buffer/prev!
      sexpr-buffer/down!
      sexpr-buffer/up!
+     sexpr-buffer/goto-left!
+     sexpr-buffer/goto-right!
+     sexpr-buffer/goto-down!
+     sexpr-buffer/goto-up!
      sexpr-buffer/delete!
      sexpr-buffer/toggle-split!
      sexpr-buffer/insert-list!
@@ -419,7 +423,7 @@
 
         (if (not (null? next))
           (cursor/mk (cons next (cdr (cursor/path cursor))))
-          (cursor/next (cursor/up cursor))))
+          (cursor/up cursor)))
     cursor))
 
 (define (cursor/skip cursor)
@@ -458,7 +462,7 @@
 
         (if (not (null? prev))
           (cursor/mk (cons prev (cdr (cursor/path cursor))))
-          (cursor/prev (cursor/up cursor))))
+          (cursor/up cursor)))
     cursor))
 
 (define (cursor/down cursor)
@@ -487,6 +491,19 @@
 
 (define (sexpr-buffer/prev! buf)
   (sexpr-buffer/cursor! buf (cursor/prev (sexpr-buffer/cursor buf))))
+
+
+(define (sexpr-buffer/goto-up! buf)
+  (sexpr-buffer/cursor! buf (cursor/goto-up (sexpr-buffer/cursor buf))))
+
+(define (sexpr-buffer/goto-down! buf)
+  (sexpr-buffer/cursor! buf (cursor/goto-down (sexpr-buffer/cursor buf))))
+
+(define (sexpr-buffer/goto-left! buf)
+  (sexpr-buffer/cursor! buf (cursor/goto-left (sexpr-buffer/cursor buf))))
+
+(define (sexpr-buffer/goto-right! buf)
+  (sexpr-buffer/cursor! buf (cursor/goto-right (sexpr-buffer/cursor buf))))
 
 (define (sexpr-buffer/delete! buf)
   (when (cursor/has-up? (sexpr-buffer/cursor buf))
@@ -550,8 +567,8 @@
       #f)))
 
 (define (sexpr-buffer/insert-list! buf)
-  (sexpr-buffer/insert! buf (sexpr #f '()))
-  (sexpr-buffer/next! buf))
+  (sexpr-buffer/insert! buf (sexpr #f '())))
+  ;;(sexpr-buffer/next! buf))
 
 (define (sexpr-buffer/start-edit! buf)
   (let* ((cursor (sexpr-buffer/cursor buf))
@@ -569,9 +586,20 @@
   (sexpr-buffer/editbuf! buf '()))
 
 (define (sexpr-buffer/input! buf input)
-  (sexpr-buffer/editbuf!
-    buf
-    (string-append (sexpr-buffer/editbuf buf) input)))
+ (cond
+   ((equal? input "") '())
+
+   ((equal? (substring input 0 1) "(")
+    (sexpr-buffer/insert-list! buf)
+    (sexpr-buffer/delete! buf)
+    (sexpr-buffer/insert-in! buf (sexpr #f 'a))
+    (sexpr-buffer/down! buf)
+    (sexpr-buffer/input! buf (substring input 1)))
+
+   (else
+    (sexpr-buffer/editbuf!
+      buf
+      (string-append (sexpr-buffer/editbuf buf) input)))))
 
 
 (define (sexpr-buffer/input-delete! buf)
@@ -591,6 +619,41 @@
 
 (define (sexpr-buffer/paste! buf)
   (sexpr-buffer/insert! buf (sexpr/make-unique (sexpr-buffer/clipboard buf))))
+
+(define (cursor/goto-up cursor)
+  (let*
+    ((current (cursor/current cursor)))
+    (if (cursor/has-up? cursor)
+      (if (sexpr/split? (cursor/get-up cursor))
+        (cursor/prev cursor)
+        (cursor/up cursor))
+      cursor)))
+
+
+(define (cursor/goto-down cursor)
+  (let*
+    ((current (cursor/current cursor)))
+    (if (cursor/has-up? cursor)
+      (if (sexpr/split? (cursor/get-up cursor))
+        (cursor/next cursor)
+        (cursor/down cursor))
+      cursor)))
+
+(define (cursor/goto-left cursor)
+  (let* ((current (cursor/current cursor)))
+    (if (cursor/has-up? cursor)
+      (if (sexpr/split? (cursor/get-up cursor))
+        (cursor/up cursor)
+        (cursor/prev cursor))
+      cursor)))
+
+(define (cursor/goto-right cursor)
+  (let* ((current (cursor/current cursor)))
+    (if (cursor/has-up? cursor)
+      (if (sexpr/split? (cursor/get-up cursor))
+        (cursor/down cursor)
+        (cursor/next cursor))
+      (cursor/down cursor))))
 
 (define (sexpr-buffer/write buf screen)
   (let ((offset (sexpr-buffer/offset buf)))
