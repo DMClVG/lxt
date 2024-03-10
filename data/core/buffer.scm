@@ -289,14 +289,19 @@
          (cdr ls)
          #f
          (screen/write-sexpr! screen cursor (car ls) split?
-           (let ((point (if (or first? split?) point (screen/write-string! screen " " color-white #f point))))
+           (let
+             ((point
+                (if
+                  (or first? split?)
+                  point
+                  (screen/write-string! screen " " color-white #f point))))
 
-              (if (and split? (not first?))
-                (p/mk
-                 (p/x begin-point)
-                 (+ (p/y point) 1))
+             (if (and split? (not first?))
+               (p/mk
+                (+ (p/x begin-point) 0)
+                (+ (p/y point) 1))
 
-                point)))))
+               point)))))
 
       ((null? ls)
        point) ;; exit function
@@ -332,16 +337,23 @@
                (in-path? color-white)
                (else color-paren))
              selected?
-            (screen/write-list! screen cursor split? datum
-             (screen/write-string!
-               screen
-               "("
-               (cond
-                 (selected? (if (cursor/farther? cursor) color-paren color-white))
-                 (in-path? color-white)
-                 (else color-paren))
-               selected?
-               point))))
+             ((if split?
+                (lambda (p) (p/mk (+ (p/x point) 1) (+ (p/y p) 1)))
+                identity)
+              (screen/write-list!
+                 screen
+                 cursor
+                 split?
+                 datum
+                 (screen/write-string!
+                   screen
+                   "("
+                   (cond
+                     (selected? (if (cursor/farther? cursor) color-paren color-white))
+                     (in-path? color-white)
+                     (else color-paren))
+                   selected?
+                   point)))))
 
           ((symbol? datum)
            (screen/write-string!
