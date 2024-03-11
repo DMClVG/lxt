@@ -87,6 +87,16 @@
       (sexpr-buffer/write *current-buffer* *screen*)
       (set! *edit-debounce* #t))
 
+     ((equal? key "u")
+      (sexpr-buffer/undo! *current-buffer*)
+      (screen/clear! *screen*)
+      (sexpr-buffer/write *current-buffer* *screen*))
+
+     ((equal? key "r")
+      (sexpr-buffer/redo! *current-buffer*)
+      (screen/clear! *screen*)
+      (sexpr-buffer/write *current-buffer* *screen*))
+
      ((equal? key "a")
       (sexpr-buffer/insert! *current-buffer* (sexpr #f empty))
       (sexpr-buffer/next! *current-buffer*)

@@ -45,6 +45,8 @@
      sexpr-buffer/toggle-closer/farther!
      sexpr-buffer/start-edit!
      sexpr-buffer/stop-edit!
+     sexpr-buffer/undo!
+     sexpr-buffer/redo!
      sexpr-buffer/editbuf
      sexpr-buffer/edit?
      sexpr-buffer/input!
@@ -338,7 +340,7 @@
                (else color-paren))
              selected?
              ((if split?
-                (lambda (p) (p/mk (+ (p/x point) 1) (+ (p/y p) 1)))
+                (lambda (p) (p/mk (+ (p/x point) 0) (+ (p/y p) 1)))
                 identity)
               (screen/write-list!
                  screen
@@ -402,13 +404,15 @@
   (not (sexpr/list? (cursor/current cursor))))
 
 (define-record-type <sexpr-buffer>
-  (sexpr-buffer/mk-raw cursor toplevel editbuf offset clipboard)
+  (sexpr-buffer/mk-raw cursor toplevel editbuf offset clipboard undo-list redo-list)
   sexpr-buffer?
   (cursor sexpr-buffer/cursor sexpr-buffer/cursor!)
   (toplevel sexpr-buffer/toplevel)
   (editbuf sexpr-buffer/editbuf sexpr-buffer/editbuf!)
   (offset sexpr-buffer/offset sexpr-buffer/offset!)
-  (clipboard sexpr-buffer/clipboard sexpr-buffer/clipboard!))
+  (clipboard sexpr-buffer/clipboard sexpr-buffer/clipboard!)
+  (undo-list sexpr-buffer/undo-list sexpr-buffer/undo-list!)
+  (redo-list sexpr-buffer/redo-list sexpr-buffer/redo-list!))
 
 ;;(define (sexpr-buffer/cursor! buf cursor)
 ;;  (sexpr-buffer/cursor-raw! buf cursor)
@@ -417,7 +421,7 @@
 ;;        (>= (p/y ())))))
 
 (define (sexpr-buffer/mk toplevel)
-  (sexpr-buffer/mk-raw (cursor/mk (list toplevel) #f) toplevel '() (p/mk 0 0) '()))
+  (sexpr-buffer/mk-raw (cursor/mk (list toplevel) #f) toplevel '() (p/mk 0 0) '() '() '()))
 
 (define (sexpr-buffer/edit? buf)
   (not (null? (sexpr-buffer/editbuf buf))))
@@ -549,6 +553,10 @@
            (to-be-deleted (cursor/current cursor))
            (up (cursor/get-up cursor)))
 
+      (sexpr-buffer/save-undo!
+        buf
+        (list up (sexpr/datum up)))
+
       (sexpr-buffer/cursor! buf (cursor/skip cursor))
 
       (sexpr/datum!
@@ -581,20 +589,31 @@
       (sexpr/traverse (cursor/current cursor) sexpr/disable-split!)
       (for-each sexpr/enable-split! (cursor/path cursor)))))
 
+(define (sexpr-buffer/push-undo! buf cmd)
+  (sexpr-buffer/undo-list! buf (cons cmd (sexpr-buffer/undo-list buf))))
+
+(define (sexpr-buffer/save-undo! buf cmd)
+  (sexpr-buffer/push-undo! buf cmd)
+  (sexpr-buffer/redo-list! buf '()))
+
 (define (sexpr-buffer/insert-back! buf sexpr)
-  (let ((cursor (sexpr-buffer/cursor buf)))
+  (let ((undo-list (sexpr-buffer/undo-list buf))
+        (cursor (sexpr-buffer/cursor buf)))
    (if (cursor/has-up? cursor)
      (let*
        ((current (cursor/current cursor))
         (up (cursor/get-up cursor))
-        (datum-up (sexpr/datum up))
-        (tail (find-tail (lambda (x) (eq? x current)) datum-up)))
+        (datum-up (sexpr/datum up)))
 
-       (if (eq? datum-up tail)
-         (sexpr/datum! up (cons sexpr datum-up))
-         (begin
-           (set-cdr! tail (cons (car tail) (cdr tail)))
-           (set-car! tail sexpr)))))))
+       (sexpr-buffer/save-undo!
+        buf
+        (list up (sexpr/datum up)))
+
+       (sexpr/datum! up
+        (let loop ((res '()) (ls datum-up))
+          (if (eq? (car ls) current)
+             (append (reverse (cons sexpr res)) ls)
+             (loop (cons (car ls) res) (cdr ls)))))))))
 
 (define (sexpr-buffer/insert! buf sexpr)
   (let ((cursor (sexpr-buffer/cursor buf)))
@@ -602,10 +621,17 @@
       (let*
         ((current (cursor/current cursor))
          (up (cursor/get-up cursor))
-         (tail (find-tail (lambda (x) (eq? x current)) (sexpr/datum up))))
+         (datum-up (sexpr/datum up)))
 
-        (set-cdr! tail (cons sexpr (cdr tail)))))))
+        (sexpr-buffer/save-undo!
+          buf
+          (list up (sexpr/datum up)))
 
+        (sexpr/datum! up
+          (let loop ((res '()) (ls datum-up))
+            (if (eq? (car ls) current)
+              (append (reverse res) (cons (car ls) (cons sexpr (cdr ls))))
+              (loop (cons (car ls) res) (cdr ls)))))))))
 
 (define (sexpr-buffer/insert-in! buf sexpr)
   (let ((cursor (sexpr-buffer/cursor buf)))
@@ -613,6 +639,7 @@
       (let*
          ((current (cursor/current cursor))
           (datum (sexpr/datum current)))
+         (sexpr-buffer/save-undo! buf (list current (sexpr/datum current)))
          (sexpr/datum! current (cons sexpr datum))
          #t)
       #f)))
@@ -624,6 +651,7 @@
       (let*
          ((current (cursor/current cursor))
           (datum (sexpr/datum current)))
+         (sexpr-buffer/save-undo! buf (list current (sexpr/datum current)))
          (sexpr/datum! current (append datum (list sexpr)))
          #t)
       #f)))
@@ -640,16 +668,61 @@
           (symbol? (sexpr/datum current)))
       (sexpr-buffer/editbuf! buf ""))))
 
+(define (insert-at x k ls)
+  (cond ((null? ls)
+         (list x))
+        ((zero? k)
+         (cons x ls))
+        (else
+         (cons (car ls)
+               (insert-at x (- k 1) (cdr ls))))))
+
+(define (sexpr-buffer/pop-undo! buf)
+  (sexpr-buffer/undo-list! buf (cdr (sexpr-buffer/undo-list buf))))
+
+(define (sexpr-buffer/push-redo! buf cmd)
+  (sexpr-buffer/redo-list! buf (cons cmd (sexpr-buffer/redo-list buf))))
+
+(define (sexpr-buffer/pop-redo! buf)
+  (sexpr-buffer/redo-list! buf (cdr (sexpr-buffer/redo-list buf))))
+
+(define (sexpr-buffer/undo! buf)
+  (unless (null? (sexpr-buffer/undo-list buf))
+    (let* ((cmd (car (sexpr-buffer/undo-list buf)))
+           (sexpr (list-ref cmd 0))
+           (undo-datum (list-ref cmd 1)))
+
+      (sexpr-buffer/push-redo! buf (list sexpr (sexpr/datum sexpr)))
+
+      (sexpr/datum! sexpr undo-datum)
+
+      (sexpr-buffer/pop-undo! buf))))
+
+
+(define (sexpr-buffer/redo! buf)
+  (unless (null? (sexpr-buffer/redo-list buf))
+    (let* ((cmd (car (sexpr-buffer/redo-list buf)))
+           (sexpr (list-ref cmd 0))
+           (redo-datum (list-ref cmd 1)))
+
+      (sexpr-buffer/push-undo! buf (list sexpr (sexpr/datum sexpr)))
+
+      (sexpr/datum! sexpr redo-datum)
+
+      (sexpr-buffer/pop-redo! buf))))
+
 (define (sexpr-buffer/stop-edit! buf)
   (let* ((cursor (sexpr-buffer/cursor buf))
          (current (cursor/current cursor))
          (editbuf (sexpr-buffer/editbuf buf)))
     (if (> (string-length editbuf) 0)
-      (cond
-        ((symbol? (sexpr/datum current))
-         (sexpr/datum! current (string->symbol editbuf)))
-        ((string? (sexpr/datum current))
-         (sexpr/datum! current (string-copy editbuf))))
+      (begin
+        (sexpr-buffer/save-undo! buf (list current (sexpr/datum current)))
+        (cond
+          ((symbol? (sexpr/datum current))
+           (sexpr/datum! current (string->symbol editbuf)))
+          ((string? (sexpr/datum current))
+           (sexpr/datum! current (string-copy editbuf)))))
       (sexpr-buffer/delete! buf)))
 
   (sexpr-buffer/editbuf! buf '()))
