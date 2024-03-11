@@ -119,7 +119,37 @@ void set_macos_bundle_resources(lua_State *L);
   #define LITE_ARCH_TUPLE ARCH_PROCESSOR "-" ARCH_PLATFORM
 #endif
 
+static SCM f_initialize_window()
+{
+  SDL_DisplayMode dm;
+  SDL_GetCurrentDisplayMode(0, &dm);
+
+  window = SDL_CreateWindow(
+    "", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, dm.w * 0.8, dm.h * 0.8,
+    SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+  init_window_icon();
+  if (!window) {
+    fprintf(stderr, "Error creating lite-xl window: %s", SDL_GetError());
+    exit(1);
+  }
+  window_renderer = ren_init(window);
+  return SCM_UNSPECIFIED;
+}
+
+static SCM f_destroy_window()
+{
+  // This allows the window to be destroyed before lite-xl is done with
+  // reaping child processes
+  ren_free(window_renderer);
+
+  //SDL_DestroyWindow(window);
+  window = NULL;
+  window_renderer = NULL;
+  return SCM_UNSPECIFIED;
+}
+
 static void inner_main(void* closure, int argc, char **argv) {
+
 #ifndef _WIN32
   signal(SIGPIPE, SIG_IGN);
 #endif
@@ -161,22 +191,8 @@ static void inner_main(void* closure, int argc, char **argv) {
 #endif
 
   SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
-
-  SDL_DisplayMode dm;
-  SDL_GetCurrentDisplayMode(0, &dm);
-
-  window = SDL_CreateWindow(
-    "", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, dm.w * 0.8, dm.h * 0.8,
-    SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_HIDDEN);
-  init_window_icon();
-  if (!window) {
-    fprintf(stderr, "Error creating lite-xl window: %s", SDL_GetError());
-    exit(1);
-  }
-  window_renderer = ren_init(window);
-
-  char exename[2048];
-  get_exe_filename(exename, sizeof(exename));
+  SDL_EventState(SDL_TEXTINPUT, SDL_ENABLE);
+  SDL_EventState(SDL_TEXTEDITING, SDL_ENABLE);
 
 #ifdef __APPLE__
   enable_momentum_scroll();
@@ -184,17 +200,15 @@ static void inner_main(void* closure, int argc, char **argv) {
     set_macos_bundle_resources(L);
   #endif
 #endif
-  SDL_EventState(SDL_TEXTINPUT, SDL_ENABLE);
-  SDL_EventState(SDL_TEXTEDITING, SDL_ENABLE);
 
+  scm_c_define_gsubr("initialize-window", 0, 0, 0, f_initialize_window);
+  scm_c_define_gsubr("destroy-window", 0, 0, 0, f_destroy_window);
   api_load();
 
   SCM file = scm_from_utf8_string("init.scm");
   scm_primitive_load(file);
 
-  // This allows the window to be destroyed before lite-xl is done with
-  // reaping child processes
-  ren_free(window_renderer);
+  scm_shell(argc, argv);
 }
 
 int main(int argc, char **argv) {

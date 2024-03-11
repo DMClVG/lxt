@@ -1,19 +1,19 @@
-(define font
-  (load-font
-    "/mnt/code/apps/mon/data/fonts/JetBrainsMono-Regular.ttf"
-    16))
-
-
 (set! %load-path (cons "." %load-path))
+
 (use-modules
   (buffer))
-
-(define **running** #f)
 
 (define +WHITE+ '(255 255 255 255))
 (define **background-color** '(#x28 #x28 #x28 255))
 
-(define *screen* (screen/new 250 140))
+(define example-code)
+(define *screen*)
+(define *current-buffer*)
+(define font)
+(define **running** #f)
+
+(define *shift* #f)
+(define *edit-debounce* #f)
 
 (define (traverse f x)
   (if (pair? x)
@@ -35,23 +35,6 @@
            (if (eof-object? x)
              out
              (loop (cons x out)))))))))
-
-
-;;(define example-code
-;;  (map-quote-to-sexpr
-;;    '(if (equal? "banana" "apple")
-;;       '()
-;;       ((display "banana is apple"))
-;;       (display "banana is not apple"))))
-
-
-(define example-code (map-quote-to-sexpr code))
-(define *current-buffer* (sexpr-buffer/mk example-code))
-
-(sexpr-buffer/write *current-buffer* *screen*)
-
-(define *shift* #f)
-(define *edit-debounce* #f)
 
 (define (process-text-input key)
   (if *edit-debounce*
@@ -238,7 +221,7 @@
 
 
 
-(define (step)
+(define (loop)
   (let ((event (poll-event)))
     (when event
       (process-event event)))
@@ -266,10 +249,28 @@
       (draw-text font (sexpr-buffer/editbuf *current-buffer*) 0 (- (assoc-ref size 'height) 30) +WHITE+)))
 
 
-  (end-frame))
-
-(set! **running** #t)
-(let loop ()
+  (end-frame)
   (when **running**
-    (step)
     (loop)))
+
+(define (start-editor)
+  (initialize-window)
+  (with-exception-handler
+    (lambda (ex)
+      (destroy-window)
+      (raise-exception ex))
+
+    (lambda ()
+      (set! example-code (map-quote-to-sexpr code))
+      (set! *current-buffer* (sexpr-buffer/mk example-code))
+      (set! *screen* (screen/new 250 140))
+
+      (sexpr-buffer/write *current-buffer* *screen*)
+
+      (set! font
+         (load-font
+             "/mnt/code/apps/mon/data/fonts/JetBrainsMono-Regular.ttf"
+             16))
+      (set! **running** #t)
+      (loop)
+      (destroy-window))))
