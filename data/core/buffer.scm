@@ -838,7 +838,7 @@
 (define (sexpr-buffer/yank! buf)
   (let* ((cursor (sexpr-buffer/cursor buf))
          (current (cursor/current cursor)))
-    (sexpr-buffer/clipboard! buf current)))
+    (sexpr-buffer/clipboard! buf (sexpr/make-unique current))))
 
 (define (sexpr/make-unique x)
   (if (sexpr/list? x)
