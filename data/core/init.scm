@@ -8,17 +8,19 @@
 
 (define example-code)
 (define *screen*)
+(define *font*)
 (define *current-buffer*)
-(define font)
 (define **running** #f)
-
 (define *shift* #f)
 (define *edit-debounce* #f)
+(define empty (string->symbol ""))
 
 (define (traverse f x)
   (if (pair? x)
     (f (map (lambda (y) (traverse f y)) x))
     (f x)))
+
+
 
 (define (map-quote-to-sexpr x)
   (traverse
@@ -44,7 +46,7 @@
       (screen/clear! *screen*)
       (sexpr-buffer/write *current-buffer* *screen*))))
 
-(define empty (string->symbol ""))
+
 
 (define (process-key-pressed key)
   (if (sexpr-buffer/edit? *current-buffer*)
@@ -61,6 +63,9 @@
    (cond
      ((string-contains key "shift")
       (set! *shift* #t))
+
+     ;;((equal? key "/")
+     ;; (sexpr-buffer/search! *current-buffer*))
 
      ((equal? key "c")
       (sexpr-buffer/insert! *current-buffer* (sexpr #f empty))
@@ -97,7 +102,7 @@
         (set! *edit-debounce* #t)))
 
      ((equal? key "i")
-      (sexpr-buffer/insert-back! *current-buffer* (sexpr #f empty))
+      (sexpr-buffer/insert-back! *current-buffer*) (sexpr #f empty)
       (sexpr-buffer/prev! *current-buffer*)
       (screen/clear! *screen*)
       (sexpr-buffer/write *current-buffer* *screen*)
@@ -152,6 +157,7 @@
        (sexpr-buffer/offset! *current-buffer* (p/y+ (sexpr-buffer/offset *current-buffer*) 4))
        (screen/clear! *screen*)
        (sexpr-buffer/write *current-buffer* *screen*)))
+
      ((and *shift* (equal? key "k")
        (sexpr-buffer/offset! *current-buffer* (p/y+ (sexpr-buffer/offset *current-buffer*) -4))
        (screen/clear! *screen*)
@@ -228,13 +234,12 @@
   (begin-frame)
   (let ((size (get-window-size)))
     (draw-rect
-        0 0
-        (assoc-ref size 'width) (assoc-ref size 'height)
-        **background-color**)
-;;    (draw-text font "yahallo!" 0 0 +WHITE+))
+      0 0
+      (assoc-ref size 'width) (assoc-ref size 'height)
+      **background-color**)
 
     (draw-buffer
-      font
+      *font*
       (screen/buffer *screen*)
       (screen/red *screen*)
       (screen/green *screen*)
@@ -246,7 +251,7 @@
       **background-color**)
 
     (when (sexpr-buffer/edit? *current-buffer*)
-      (draw-text font (sexpr-buffer/editbuf *current-buffer*) 0 (- (assoc-ref size 'height) 30) +WHITE+)))
+      (draw-text *font* (sexpr-buffer/editbuf *current-buffer*) 0 (- (assoc-ref size 'height) 30) +WHITE+)))
 
 
   (end-frame)
@@ -267,7 +272,7 @@
 
       (sexpr-buffer/write *current-buffer* *screen*)
 
-      (set! font
+      (set! *font*
          (load-font
              "/mnt/code/apps/mon/data/fonts/JetBrainsMono-Regular.ttf"
              16))

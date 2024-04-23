@@ -47,6 +47,7 @@
      sexpr-buffer/stop-edit!
      sexpr-buffer/undo!
      sexpr-buffer/redo!
+     sexpr-buffer/search!
      sexpr-buffer/editbuf
      sexpr-buffer/edit?
      sexpr-buffer/input!
@@ -469,8 +470,8 @@
 
 
 (define (cursor/skip cursor)
-  ;; move away from current sexpr no matter what (prefers siblings and next over previous)
-  ;; returns #f if can't move away
+  "move away from current sexpr no matter what (prefers siblings and next over previous)
+  returns #f if can't move away"
   (if (cursor/has-up? cursor)
     (let*
         ((current (cursor/current cursor))
@@ -491,6 +492,14 @@
 
     #f))
 
+(define (sexpr/search sexpr x)
+  (let ((datum (sexpr/datum sexpr)))
+    (cond
+      ((list? datum)
+       (apply append (map (lambda (y) (sexpr/search y x)) datum)))
+      (else
+        (if (equal? datum x)
+          (list x))))))
 
 (define (cursor/prev cursor)
   (if (cursor/has-up? cursor)
@@ -941,16 +950,5 @@
            (cursor/path cursor)
            (not (cursor/farther? cursor)))))))
 
-
-
-;;(define (sexpr-buffer/prev buf))
-
-;;(define (sexpr-buffer/toggle-split buf))
-;;
-;;(define (sexpr-buffer/toggle-edit buf))
-;;
-;;(define (sexpr-buffer/create-paren buf))
-;;
-;;(define (sexpr-buffer/create-value buf))
-;;
-;;(define (sexpr-buffer/delete buf))
+(define (sexpr-buffer/search! buf)
+  '())
