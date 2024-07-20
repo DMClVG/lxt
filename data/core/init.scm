@@ -1,4 +1,5 @@
 (set! %load-path (cons "." %load-path))
+(define font-path (string-append (getcwd) "/data/fonts/JetBrainsMono-Regular.ttf"))
 
 (use-modules
   (buffer))
@@ -85,7 +86,12 @@
       (screen/clear! *screen*)
       (sexpr-buffer/write *current-buffer* *screen*))
 
-     ((equal? key "a")
+     ((equal? key "o")
+      (sexpr-buffer/toggle-split! *current-buffer*)
+      (screen/clear! *screen*)
+      (sexpr-buffer/write *current-buffer* *screen*))
+
+     ((and (not *shift*) (equal? key "space"))
       (sexpr-buffer/insert! *current-buffer* (sexpr #f empty))
       (sexpr-buffer/next! *current-buffer*)
       (screen/clear! *screen*)
@@ -128,11 +134,6 @@
       (screen/clear! *screen*)
       (sexpr-buffer/write *current-buffer* *screen*))
 
-     ((equal? key "space")
-      (sexpr-buffer/toggle-split! *current-buffer*)
-      (screen/clear! *screen*)
-      (sexpr-buffer/write *current-buffer* *screen*))
-
      ((and *shift* (equal? key "o"))
       (sexpr-buffer/insert-back! *current-buffer* (sexpr #f '()))
       (sexpr-buffer/prev! *current-buffer*)
@@ -143,7 +144,7 @@
       (sexpr-buffer/write *current-buffer* *screen*)
       (set! *edit-debounce* #t))
 
-     ((equal? key "o")
+     ((and *shift* (equal? key "space"))
       (sexpr-buffer/insert-list! *current-buffer*)
       (sexpr-buffer/next! *current-buffer*)
       (sexpr-buffer/insert-in! *current-buffer* (sexpr #f empty))
@@ -273,9 +274,7 @@
       (sexpr-buffer/write *current-buffer* *screen*)
 
       (set! *font*
-         (load-font
-             "/mnt/code/apps/mon/data/fonts/JetBrainsMono-Regular.ttf"
-             16))
+         (load-font font-path 24))
       (set! **running** #t)
       (loop)
       (destroy-window))))
