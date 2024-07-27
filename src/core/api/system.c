@@ -89,6 +89,7 @@ static SCM sym_type,
            sym_key,
            sym_x,
            sym_y,
+  sym_mouse_wheel,
            sym_text;
 
 static SDL_HitTestResult SDLCALL hit_test(SDL_Window *window, const SDL_Point *pt, void *data) {
@@ -184,11 +185,6 @@ static char *win32_error(DWORD rc) {
   return message;
 }
 
-static void push_win32_error(lua_State *L, DWORD rc) {
-  LPSTR message = win32_error(rc);
-  lua_pushstring(L, message);
-  LocalFree(message);
-}
 #endif
 
 static SCM make_alist(SCM keyvals[]) {
@@ -216,6 +212,16 @@ top:
         sym_type, sym_quit,
         SCM_UNDEFINED
       });
+
+  case SDL_MOUSEWHEEL: {
+    SDL_MouseWheelEvent wheel = e.wheel;
+    return make_alist( (SCM[]) {
+	sym_type, sym_mouse_wheel,
+	sym_x, scm_from_double(wheel.preciseX),
+	sym_y, scm_from_double(wheel.preciseY),
+	SCM_UNDEFINED
+      });
+  } break;
 
     case SDL_WINDOWEVENT:
       if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
@@ -318,18 +324,6 @@ top:
 }
 
 
-static int f_wait_event(lua_State *L) {
-  int nargs = lua_gettop(L);
-  if (nargs >= 1) {
-    double n = luaL_checknumber(L, 1);
-    if (n < 0) n = 0;
-    lua_pushboolean(L, SDL_WaitEventTimeout(NULL, n * 1000));
-  } else {
-    lua_pushboolean(L, SDL_WaitEvent(NULL));
-  }
-  return 1;
-}
-
 
 static SDL_Cursor* cursor_cache[SDL_SYSTEM_CURSOR_HAND + 1];
 
@@ -349,24 +343,6 @@ static const int cursor_enums[] = {
   SDL_SYSTEM_CURSOR_SIZENS,
   SDL_SYSTEM_CURSOR_HAND
 };
-
-static int f_set_cursor(lua_State *L) {
-  int opt = luaL_checkoption(L, 1, "arrow", cursor_opts);
-  int n = cursor_enums[opt];
-  SDL_Cursor *cursor = cursor_cache[n];
-  if (!cursor) {
-    cursor = SDL_CreateSystemCursor(n);
-    cursor_cache[n] = cursor;
-  }
-  SDL_SetCursor(cursor);
-  return 0;
-}
-
-
-static int f_set_window_title(lua_State *L) {
-//  SDL_SetWindowTitle(window_renderer->window, title);
-  return 0;
-}
 
 enum { WIN_NORMAL, WIN_MINIMIZED, WIN_MAXIMIZED, WIN_FULLSCREEN };
 
@@ -393,25 +369,6 @@ static SCM f_set_window_mode(SCM mode) {
   return SCM_BOOL_T;
 }
 
-
-static int f_set_window_bordered(lua_State *L) {
-  int bordered = lua_toboolean(L, 1);
-  SDL_SetWindowBordered(window_renderer->window, bordered);
-  return 0;
-}
-
-
-static int f_set_window_hit_test(lua_State *L) {
-  if (lua_gettop(L) == 0) {
-    SDL_SetWindowHitTest(window_renderer->window, NULL, NULL);
-    return 0;
-  }
-  window_hit_info->title_height = luaL_checknumber(L, 1);
-  window_hit_info->controls_width = luaL_checknumber(L, 2);
-  window_hit_info->resize_border = luaL_checknumber(L, 3);
-  SDL_SetWindowHitTest(window_renderer->window, hit_test, window_hit_info);
-  return 0;
-}
 
 
 static SCM f_get_window_size() {
@@ -440,49 +397,6 @@ static SCM f_set_window_size(SCM w_x, SCM w_y, SCM w_w, SCM w_h) {
 }
 
 
-static int f_window_has_focus(lua_State *L) {
-  unsigned flags = SDL_GetWindowFlags(window_renderer->window);
-  lua_pushboolean(L, flags & SDL_WINDOW_INPUT_FOCUS);
-  return 1;
-}
-
-
-static int f_get_window_mode(lua_State *L) {
-  unsigned flags = SDL_GetWindowFlags(window_renderer->window);
-  if (flags & SDL_WINDOW_FULLSCREEN_DESKTOP) {
-    lua_pushstring(L, "fullscreen");
-  } else if (flags & SDL_WINDOW_MINIMIZED) {
-    lua_pushstring(L, "minimized");
-  } else if (flags & SDL_WINDOW_MAXIMIZED) {
-    lua_pushstring(L, "maximized");
-  } else {
-    lua_pushstring(L, "normal");
-  }
-  return 1;
-}
-
-static int f_set_window_opacity(lua_State *L) {
-  double n = luaL_checknumber(L, 1);
-  int r = SDL_SetWindowOpacity(window_renderer->window, n);
-  lua_pushboolean(L, r > -1);
-  return 1;
-}
-
-//static const luaL_Reg lib[] = {
-//  { "poll_event",          f_poll_event          },
-//  { "wait_event",          f_wait_event          },
-//  { "set_cursor",          f_set_cursor          },
-//  { "set_window_title",    f_set_window_title    },
-//  { "set_window_mode",     f_set_window_mode     },
-//  { "get_window_mode",     f_get_window_mode     },
-//  { "set_window_bordered", f_set_window_bordered },
-//  { "set_window_hit_test", f_set_window_hit_test },
-//  { "get_window_size",     f_get_window_size     },
-//  { "set_window_size",     f_set_window_size     },
-//  { NULL, NULL }
-//};
-
-
 void api_load_system() {
   sym_type = scm_from_utf8_symbol("type");
   sym_quit = scm_from_utf8_symbol("quit");
@@ -498,6 +412,7 @@ void api_load_system() {
   sym_key_pressed = scm_from_utf8_symbol("key-pressed");
   sym_focus_lost = scm_from_utf8_symbol("focus-lost");
   sym_text_input = scm_from_utf8_symbol("text-input");
+  sym_mouse_wheel = scm_from_utf8_symbol("mouse-wheel");
   sym_event = scm_from_utf8_symbol("event");
   sym_width = scm_from_utf8_symbol("width");
   sym_height = scm_from_utf8_symbol("height");

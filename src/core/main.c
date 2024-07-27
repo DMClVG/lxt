@@ -59,7 +59,7 @@ static void get_exe_filename(char *buf, int sz) {
 
 static void init_window_icon(void) {
 #if !defined(_WIN32) && !defined(__APPLE__)
-  #include "../resources/icons/icon.inl"
+  #include "icons/icon.inl"
   (void) icon_rgba_len; /* unused */
   SDL_Surface *surf = SDL_CreateRGBSurfaceFrom(
     icon_rgba, 64, 64,
@@ -205,7 +205,7 @@ static void inner_main(void* closure, int argc, char **argv) {
   scm_c_define_gsubr("destroy-window", 0, 0, 0, f_destroy_window);
   api_load();
 
-  SCM file = scm_from_utf8_string("init.scm");
+  SCM file = scm_from_utf8_string("src/init.scm");
   scm_primitive_load(file);
 
   scm_shell(argc, argv);

@@ -1,0 +1,2 @@
+export PKG_CONFIG_PATH="$PWD/SDL/dest/lib/pkgconfig:$PKG_CONFIG_PATH"
+export LD_LIBRARY_PATH="$GUIX_PROFILE/lib/:$LD_LIBRARY_PATH"

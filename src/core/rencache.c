@@ -15,7 +15,6 @@
   #include <stdalign.h>
 #endif
 
-#include <lauxlib.h>
 #include "rencache.h"
 #include "renwindow.h"
 
@@ -393,4 +392,3 @@ void rencache_end_frame(RenWindow *window_renderer) {
   cells_prev = tmp;
   window_renderer->command_buf_idx = 0;
 }
-

@@ -2,7 +2,6 @@
 #define RENCACHE_H
 
 #include <stdbool.h>
-#include <lua.h>
 #include "renderer.h"
 
 void  rencache_show_debug(bool enable);

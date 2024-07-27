@@ -811,9 +811,15 @@
         (sexpr-buffer/extend-left! buf)
         (sexpr-buffer/shrink-left! buf))))
 
-(define (sexpr-buffer/input! buf input)
+(define (sexpr-buffer/input! buf input shift?)
  (cond
    ((equal? input "") '())
+
+   ((and *shift* (equal? input " "))
+    (sexpr-buffer/stop-edit! buf)
+    (sexpr-buffer/insert! buf (sexpr #f empty))
+    (sexpr-buffer/next! buf)
+    (sexpr-buffer/start-edit! buf))
 
    ((and (equal? input " ")
          (symbol? (sexpr/datum (cursor/current (sexpr-buffer/cursor buf)))))

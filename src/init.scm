@@ -1,5 +1,9 @@
-(set! %load-path (cons "." %load-path))
-(define font-path (string-append (getcwd) "/data/fonts/JetBrainsMono-Regular.ttf"))
+(define (incwd path)
+  (string-append (getcwd) path))
+
+(set! %load-path (cons (incwd "/src/") %load-path))
+(display %load-path)
+(define font-path (incwd "/fonts/JetBrainsMono-Regular.ttf"))
 
 (use-modules
   (buffer))
@@ -8,6 +12,8 @@
 (define **background-color** '(#x28 #x28 #x28 255))
 
 (define example-code)
+(define scrolling-freq 100.0)
+(define dy 0)
 (define *screen*)
 (define *font*)
 (define *current-buffer*)
@@ -16,12 +22,13 @@
 (define *edit-debounce* #f)
 (define empty (string->symbol ""))
 
+(define (scroll amount)
+  (set! dy (+ dy (* scrolling-freq amount))))
+
 (define (traverse f x)
   (if (pair? x)
     (f (map (lambda (y) (traverse f y)) x))
     (f x)))
-
-
 
 (define (map-quote-to-sexpr x)
   (traverse
@@ -30,7 +37,7 @@
     x))
 
 (define code
-  (call-with-input-file "buffer.scm"
+  (call-with-input-file (incwd "/src/buffer.scm")
     (lambda (f)
       (reverse
        (let loop ((out '()))
@@ -43,7 +50,7 @@
   (if *edit-debounce*
     (set! *edit-debounce* #f)
     (when (sexpr-buffer/edit? *current-buffer*)
-      (sexpr-buffer/input! *current-buffer* key)
+      (sexpr-buffer/input! *current-buffer* key *shift*)
       (screen/clear! *screen*)
       (sexpr-buffer/write *current-buffer* *screen*))))
 
@@ -108,7 +115,7 @@
         (set! *edit-debounce* #t)))
 
      ((equal? key "i")
-      (sexpr-buffer/insert-back! *current-buffer*) (sexpr #f empty)
+      (sexpr-buffer/insert-back! *current-buffer* (sexpr #f empty))
       (sexpr-buffer/prev! *current-buffer*)
       (screen/clear! *screen*)
       (sexpr-buffer/write *current-buffer* *screen*)
@@ -218,20 +225,21 @@
      (let ((text (assoc-ref event 'text)))
        (process-text-input text)))
 
+    ('mouse-wheel
+     (scroll (assoc-ref event 'y)))
+
     (else => trace))
 
-
-
-  (display event)
-  (newline)
   '())
 
 
 
 (define (loop)
-  (let ((event (poll-event)))
+  (let event-loop ((event (poll-event)))
     (when event
-      (process-event event)))
+      (process-event event)
+      (event-loop (poll-event))))
+
   (begin-frame)
   (let ((size (get-window-size)))
     (draw-rect
@@ -248,7 +256,7 @@
       (screen/width *screen*)
       (screen/height *screen*)
       0
-      0
+      (inexact->exact (floor dy))
       **background-color**)
 
     (when (sexpr-buffer/edit? *current-buffer*)
@@ -256,11 +264,13 @@
 
 
   (end-frame)
+  (usleep 15000)
   (when **running**
     (loop)))
 
 (define (start-editor)
   (initialize-window)
+  (set! dy 0)
   (with-exception-handler
     (lambda (ex)
       (destroy-window)
@@ -269,12 +279,12 @@
     (lambda ()
       (set! example-code (map-quote-to-sexpr code))
       (set! *current-buffer* (sexpr-buffer/mk example-code))
-      (set! *screen* (screen/new 250 140))
+      (set! *screen* (screen/new 120 60))
 
       (sexpr-buffer/write *current-buffer* *screen*)
 
       (set! *font*
-         (load-font font-path 24))
+         (load-font font-path 28))
       (set! **running** #t)
       (loop)
       (destroy-window))))
